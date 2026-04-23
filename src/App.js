@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { supabase } from "./supabase";
 
@@ -8,6 +8,7 @@ const GOALS_6M = { weight: 73, fat: 15 };
 const GOALS_1Y = { weight: 71, fat: 13 };
 const START_DATE = new Date("2026-04-23");
 const PROTEIN_GOAL_KEY = "protein_goal";
+const DRAFT_KEY = "daily_draft";
 
 function getWeekNumber() {
   const diff = Math.floor((new Date() - START_DATE) / (7 * 24 * 60 * 60 * 1000));
@@ -67,7 +68,8 @@ const c = {
 
 const inputStyle = { width: "100%", background: c.section, border: `1px solid ${c.border}`, borderRadius: 12, padding: "13px 14px", color: c.text, fontSize: 16, boxSizing: "border-box", marginTop: 6, outline: "none" };
 
-function ToggleWithMemo({ fieldKey, val, memoVal, onToggle, onMemoBlur }) {
+// ===== サブコンポーネント =====
+function ToggleWithMemo({ fieldKey, val, memoVal, onToggle, onMemoChange }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -81,7 +83,8 @@ function ToggleWithMemo({ fieldKey, val, memoVal, onToggle, onMemoBlur }) {
           }}>{v}</button>
         ))}
       </div>
-      <input type="text" defaultValue={memoVal} onBlur={e => onMemoBlur(fieldKey + "メモ", e.target.value)}
+      <input type="text" value={memoVal || ""}
+        onChange={e => onMemoChange(fieldKey + "メモ", e.target.value)}
         placeholder="一言メモ（任意）"
         style={{ width: "100%", marginTop: 6, padding: "9px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.section, fontSize: 13, color: c.text, boxSizing: "border-box", outline: "none" }}
       />
@@ -105,14 +108,18 @@ function SimpleToggle({ fieldKey, val, onToggle }) {
   );
 }
 
-function DecimalBlurInput({ fieldKey, placeholder, onBlur }) {
+function DecimalInput({ fieldKey, value, placeholder, onChange }) {
+  const handleChange = (e) => {
+    onChange(fieldKey, e.target.value);
+  };
+  const handleBlur = (e) => {
+    const formatted = formatDecimalInput(e.target.value);
+    onChange(fieldKey, formatted);
+  };
   return (
-    <input type="tel" inputMode="numeric" defaultValue=""
-      onBlur={e => {
-        const formatted = formatDecimalInput(e.target.value);
-        e.target.value = formatted;
-        onBlur(fieldKey, formatted);
-      }}
+    <input type="tel" inputMode="numeric" value={value || ""}
+      onChange={handleChange}
+      onBlur={handleBlur}
       placeholder={placeholder}
       style={inputStyle}
     />
@@ -120,33 +127,31 @@ function DecimalBlurInput({ fieldKey, placeholder, onBlur }) {
 }
 
 function ProteinInputRow({ timing, onAdd }) {
-  const gRef = useRef("");
-  const memoRef = useRef("");
-  const [hasG, setHasG] = useState(false);
+  const [gVal, setGVal] = useState("");
+  const [memoVal, setMemoVal] = useState("");
+  const hasG = !!gVal;
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <input type="number" defaultValue=""
-          onChange={e => { gRef.current = e.target.value; setHasG(!!e.target.value); }}
+        <input type="number" value={gVal}
+          onChange={e => setGVal(e.target.value)}
           placeholder="g数"
           style={{ width: 70, padding: "9px 10px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, fontSize: 14, color: c.text, outline: "none" }}
         />
-        <input type="text" defaultValue=""
-          onChange={e => { memoRef.current = e.target.value; }}
+        <input type="text" value={memoVal}
+          onChange={e => setMemoVal(e.target.value)}
           placeholder="一言（例：鶏むね肉）"
           style={{ flex: 1, padding: "9px 10px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, fontSize: 13, color: c.text, outline: "none" }}
         />
       </div>
-      <button
-        onClick={() => {
-          if (!gRef.current) return;
-          onAdd({ timing, g: gRef.current, memo: memoRef.current });
-          gRef.current = "";
-          memoRef.current = "";
-          setHasG(false);
-        }}
-        style={{ width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: hasG ? c.accent : c.border, color: hasG ? "#fff" : c.muted, fontSize: 13, fontWeight: 700, cursor: hasG ? "pointer" : "default" }}
-      >追加する</button>
+      <button onClick={() => {
+        if (!gVal) return;
+        onAdd({ timing, g: gVal, memo: memoVal });
+        setGVal("");
+        setMemoVal("");
+      }} style={{ width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: hasG ? c.accent : c.border, color: hasG ? "#fff" : c.muted, fontSize: 13, fontWeight: 700, cursor: hasG ? "pointer" : "default" }}>
+        追加する
+      </button>
     </div>
   );
 }
@@ -159,6 +164,7 @@ const ST = ({ children, color }) => (
 );
 const FL = ({ children }) => <div style={{ fontSize: 12, color: c.muted, marginBottom: 2 }}>{children}</div>;
 
+// ===== メインコンポーネント =====
 export default function App() {
   const [tab, setTab] = useState(0);
   const [data, setData] = useState([]);
@@ -171,17 +177,70 @@ export default function App() {
   const [showProteinGoalEdit, setShowProteinGoalEdit] = useState(false);
   const [proteinEntries, setProteinEntries] = useState([]);
   const [selectedTiming, setSelectedTiming] = useState("");
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [autoSaveMsg, setAutoSaveMsg] = useState("");
+  const [initialized, setInitialized] = useState(false);
 
   const todayDay = DAYS[new Date().getDay()];
   const isSun = new Date().getDay() === 0;
   const weekNum = getWeekNumber();
   const weekGoal = getWeeklyGoal(weekNum);
 
+  // 起動時：localStorageから途中経過を復元 + Supabaseからデータ読み込み
   useEffect(() => {
-    const saved = localStorage.getItem(PROTEIN_GOAL_KEY);
-    if (saved) setProteinGoal(Number(saved));
+    const savedGoal = localStorage.getItem(PROTEIN_GOAL_KEY);
+    if (savedGoal) setProteinGoal(Number(savedGoal));
+
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        if (parsed.date === todayLabel()) {
+          setForm(parsed.form || EMPTY_FORM);
+          setProteinEntries(parsed.proteinEntries || []);
+          setDraftRestored(true);
+          setAutoSaveMsg("下書きを復元しました");
+          setTimeout(() => {
+            setAutoSaveMsg("");
+            setDraftRestored(false);
+          }, 3000);
+        } else {
+          localStorage.removeItem(DRAFT_KEY);
+        }
+      } catch (e) {
+        localStorage.removeItem(DRAFT_KEY);
+      }
+    }
+
     loadData();
+    setInitialized(true);
   }, []);
+
+  // formやproteinEntriesが変わるたびに自動保存（初期化後のみ）
+  useEffect(() => {
+    if (!initialized) return;
+    const draft = {
+      date: todayLabel(),
+      form,
+      proteinEntries,
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+
+    if (!draftRestored) {
+      const hasAnyInput = Object.values(form).some(v => v !== "") || proteinEntries.length > 0;
+      if (hasAnyInput) {
+        setAutoSaveMsg("途中経過は自動保存されています");
+        const timer = setTimeout(() => setAutoSaveMsg(""), 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [form, proteinEntries, initialized]);
+
+  // proteinGoal変更時にlocalStorageに保存
+  useEffect(() => {
+    if (!initialized) return;
+    localStorage.setItem(PROTEIN_GOAL_KEY, String(proteinGoal));
+  }, [proteinGoal, initialized]);
 
   const loadData = async () => {
     try {
@@ -212,12 +271,18 @@ export default function App() {
   const handleToggle = (key, value) => {
     setForm(prev => ({ ...prev, [key]: prev[key] === value ? "" : value }));
   };
-  const handleMemoBlur = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
-  const handleDecimalBlur = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+  const handleFieldChange = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
   const totalProtein = proteinEntries.reduce((sum, e) => sum + (Number(e.g) || 0), 0);
   const proteinRemaining = Math.max(0, proteinGoal - totalProtein);
   const proteinProgress = Math.min(100, Math.round((totalProtein / proteinGoal) * 100));
+
+  // 入力済み項目数をカウント（進捗表示用）
+  const filledCount = [
+    form.発信, form.営業, form.筋トレ, form.水泳, form.食事,
+    form.朝ストレッチ, form.夜ストレッチ, form.水2L,
+    form.体重
+  ].filter(v => v && v !== "").length;
 
   const save = async () => {
     const row = {
@@ -240,9 +305,13 @@ export default function App() {
       const { error } = await supabase.from('logs').insert([row]);
       if (error) throw error;
       await loadData();
+
+      // 下書きをクリア
+      localStorage.removeItem(DRAFT_KEY);
       setForm(EMPTY_FORM);
       setProteinEntries([]);
       setSelectedTiming("");
+      setAutoSaveMsg("");
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
@@ -275,6 +344,7 @@ export default function App() {
   return (
     <div style={{ background: c.bg, minHeight: "100vh", color: c.text, fontFamily: "'Hiragino Sans', 'Yu Gothic', sans-serif", maxWidth: 420, margin: "0 auto", paddingBottom: 90 }}>
 
+      {/* ヘッダー */}
       <div style={{ background: c.card, padding: "18px 18px 14px", borderBottom: `1px solid ${c.border}`, boxShadow: "0 1px 6px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <div style={{ fontSize: 10, color: c.muted, letterSpacing: 2 }}>LIFE DASHBOARD · Week {weekNum}</div>
@@ -308,6 +378,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* タブ */}
       <div style={{ display: "flex", background: c.card, borderBottom: `1px solid ${c.border}` }}>
         {["入力", "今週", "グラフ"].map((t, i) => (
           <button key={t} onClick={() => setTab(i)} style={{ flex: 1, padding: "13px 0", border: "none", cursor: "pointer", background: "transparent", fontSize: 13, fontWeight: tab === i ? 700 : 400, color: tab === i ? c.accent : c.muted, borderBottom: tab === i ? `2.5px solid ${c.accent}` : "2.5px solid transparent" }}>{t}</button>
@@ -322,51 +393,94 @@ export default function App() {
           </div>
         )}
 
+        {/* ===== 入力タブ ===== */}
         {tab === 0 && (
           <div>
-            <div style={{ fontSize: 12, color: c.muted, marginBottom: 14, textAlign: "center", fontWeight: 600 }}>📅 {todayLabel()} のログ</div>
+            {/* 日付と進捗バナー */}
+            <div style={{ background: c.card, borderRadius: 14, padding: "12px 16px", marginBottom: 12, border: `1px solid ${c.border}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: c.text }}>📅 {todayLabel()}</div>
+                <div style={{ fontSize: 11, color: filledCount === 9 ? c.green : c.muted, fontWeight: filledCount === 9 ? 700 : 400 }}>
+                  {filledCount === 9 ? "✅ 全項目入力済み" : `${filledCount} / 9 項目入力済み`}
+                </div>
+              </div>
+              {/* 進捗バー */}
+              <div style={{ background: c.section, borderRadius: 6, height: 6, overflow: "hidden" }}>
+                <div style={{ width: `${Math.round((filledCount / 9) * 100)}%`, height: "100%", background: filledCount === 9 ? c.green : c.accent, borderRadius: 6, transition: "width 0.3s" }} />
+              </div>
+              {/* 自動保存メッセージ */}
+              {autoSaveMsg && (
+                <div style={{
+                  fontSize: 11,
+                  color: draftRestored ? c.green : c.muted,
+                  marginTop: 6,
+                  fontWeight: draftRestored ? 600 : 400,
+                  transition: "opacity 0.3s",
+                }}>
+                  {draftRestored ? "✓ " : "💾 "}{autoSaveMsg}
+                </div>
+              )}
+            </div>
+
             {saved && (
               <div style={{ background: "#e8faf4", border: `1px solid ${c.green}`, borderRadius: 14, padding: 14, textAlign: "center", color: c.green, fontSize: 14, fontWeight: 700, marginBottom: 14 }}>
                 ✅ 保存しました！お疲れ様でした🎉
               </div>
             )}
+
+            {/* 仕事 */}
             <Card bg={c.workBg}>
               <ST color={c.accent}>💼 仕事</ST>
               <div style={{ marginBottom: 14 }}>
                 <FL>提案数（件）</FL>
-                <input type="number" defaultValue="" onBlur={e => setForm(p => ({ ...p, 提案数: e.target.value }))} placeholder="0" style={inputStyle} />
+                <input type="number" value={form.提案数}
+                  onChange={e => handleFieldChange("提案数", e.target.value)}
+                  placeholder="0" style={inputStyle} />
               </div>
               <div style={{ marginBottom: 14 }}>
                 <FL>発信</FL>
-                <ToggleWithMemo fieldKey="発信" val={form.発信} memoVal={form.発信メモ} onToggle={handleToggle} onMemoBlur={handleMemoBlur} />
+                <ToggleWithMemo fieldKey="発信" val={form.発信} memoVal={form.発信メモ} onToggle={handleToggle} onMemoChange={handleFieldChange} />
               </div>
               <div>
                 <FL>営業</FL>
-                <ToggleWithMemo fieldKey="営業" val={form.営業} memoVal={form.営業メモ} onToggle={handleToggle} onMemoBlur={handleMemoBlur} />
+                <ToggleWithMemo fieldKey="営業" val={form.営業} memoVal={form.営業メモ} onToggle={handleToggle} onMemoChange={handleFieldChange} />
               </div>
             </Card>
 
+            {/* ボディメイク */}
             <Card bg={c.bodyBg}>
               <ST color={c.green}>💪 ボディメイク</ST>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 {["筋トレ", "水泳"].map(key => (
                   <div key={key}>
                     <FL>{key}</FL>
-                    <ToggleWithMemo fieldKey={key} val={form[key]} memoVal={form[key + "メモ"]} onToggle={handleToggle} onMemoBlur={handleMemoBlur} />
+                    <ToggleWithMemo fieldKey={key} val={form[key]} memoVal={form[key + "メモ"]} onToggle={handleToggle} onMemoChange={handleFieldChange} />
                   </div>
                 ))}
               </div>
               <div style={{ marginBottom: 14 }}>
                 <FL>食事</FL>
-                <ToggleWithMemo fieldKey="食事" val={form.食事} memoVal={form.食事メモ} onToggle={handleToggle} onMemoBlur={handleMemoBlur} />
+                <ToggleWithMemo fieldKey="食事" val={form.食事} memoVal={form.食事メモ} onToggle={handleToggle} onMemoChange={handleFieldChange} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: isSun ? 14 : 0 }}>
-                <div><FL>体重 (kg) ※3桁→自動変換</FL><DecimalBlurInput fieldKey="体重" placeholder="780→78.0" onBlur={handleDecimalBlur} /></div>
-                <div><FL>体脂肪 (%) ※3桁→自動変換</FL><DecimalBlurInput fieldKey="体脂肪" placeholder="200→20.0" onBlur={handleDecimalBlur} /></div>
+                <div>
+                  <FL>体重 (kg) ※3桁→自動変換</FL>
+                  <DecimalInput fieldKey="体重" value={form.体重} placeholder="780→78.0" onChange={handleFieldChange} />
+                </div>
+                <div>
+                  <FL>体脂肪 (%) ※3桁→自動変換</FL>
+                  <DecimalInput fieldKey="体脂肪" value={form.体脂肪} placeholder="200→20.0" onChange={handleFieldChange} />
+                </div>
               </div>
-              {isSun && <div><FL>腹回り (cm) ※日曜のみ</FL><DecimalBlurInput fieldKey="腹回り" placeholder="850→85.0" onBlur={handleDecimalBlur} /></div>}
+              {isSun && (
+                <div>
+                  <FL>腹回り (cm) ※日曜のみ</FL>
+                  <DecimalInput fieldKey="腹回り" value={form.腹回り} placeholder="850→85.0" onChange={handleFieldChange} />
+                </div>
+              )}
             </Card>
 
+            {/* 健康習慣 */}
             <Card bg={c.healthBg}>
               <ST color={c.yellow}>🌿 健康習慣</ST>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
@@ -377,6 +491,8 @@ export default function App() {
                 <FL>水2L</FL>
                 <SimpleToggle fieldKey="水2L" val={form.水2L} onToggle={handleToggle} />
               </div>
+
+              {/* タンパク質トラッカー */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <FL>🥩 タンパク質トラッカー</FL>
@@ -386,21 +502,31 @@ export default function App() {
                 </div>
                 {showProteinGoalEdit && (
                   <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                    <input type="number" value={proteinGoalInput} onChange={e => setProteinGoalInput(e.target.value)} placeholder={`現在 ${proteinGoal}g`}
+                    <input type="number" value={proteinGoalInput} onChange={e => setProteinGoalInput(e.target.value)}
+                      placeholder={`現在 ${proteinGoal}g`}
                       style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.section, fontSize: 14, color: c.text, outline: "none" }} />
-                    <button onClick={() => { const v = Number(proteinGoalInput); if (v > 0) { setProteinGoal(v); localStorage.setItem(PROTEIN_GOAL_KEY, v); } setShowProteinGoalEdit(false); setProteinGoalInput(""); }}
+                    <button onClick={() => {
+                      const v = Number(proteinGoalInput);
+                      if (v > 0) setProteinGoal(v);
+                      setShowProteinGoalEdit(false);
+                      setProteinGoalInput("");
+                    }}
                       style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: c.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>保存</button>
                   </div>
                 )}
+
                 <div style={{ background: proteinRemaining === 0 ? "#e8faf4" : "#fffbf0", borderRadius: 12, padding: "10px 14px", marginBottom: 10, border: `1px solid ${proteinRemaining === 0 ? c.green : c.yellow}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700 }}>{totalProtein}g <span style={{ fontSize: 11, color: c.muted, fontWeight: 400 }}>/ 目標 {proteinGoal}g</span></span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: proteinRemaining === 0 ? c.green : c.yellow }}>{proteinRemaining === 0 ? "✅ 達成！" : `あと ${proteinRemaining}g`}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: proteinRemaining === 0 ? c.green : c.yellow }}>
+                      {proteinRemaining === 0 ? "✅ 達成！" : `あと ${proteinRemaining}g`}
+                    </span>
                   </div>
                   <div style={{ background: c.border, borderRadius: 6, height: 8, overflow: "hidden" }}>
                     <div style={{ width: `${proteinProgress}%`, height: "100%", background: proteinRemaining === 0 ? c.green : c.yellow, borderRadius: 6, transition: "width 0.3s" }} />
                   </div>
                 </div>
+
                 {proteinEntries.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
                     {proteinEntries.map((e, i) => (
@@ -408,11 +534,13 @@ export default function App() {
                         <span style={{ fontSize: 12, color: c.muted, minWidth: 48 }}>{e.timing || "-"}</span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: c.accent, minWidth: 36 }}>{e.g}g</span>
                         <span style={{ fontSize: 12, color: c.muted, flex: 1 }}>{e.memo}</span>
-                        <button onClick={() => setProteinEntries(prev => prev.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: c.red, fontSize: 14 }}>✕</button>
+                        <button onClick={() => setProteinEntries(prev => prev.filter((_, j) => j !== i))}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: c.red, fontSize: 14 }}>✕</button>
                       </div>
                     ))}
                   </div>
                 )}
+
                 <div style={{ background: c.section, borderRadius: 12, padding: 12 }}>
                   <div style={{ fontSize: 11, color: c.muted, marginBottom: 8, fontWeight: 600 }}>+ タイミングを追加</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
@@ -433,12 +561,15 @@ export default function App() {
             </Card>
 
             <button onClick={save} style={{ width: "100%", padding: "18px 0", borderRadius: 16, border: "none", cursor: "pointer", background: c.accent, color: "#fff", fontSize: 16, fontWeight: 800, letterSpacing: 1, boxShadow: "0 4px 14px rgba(59,126,248,0.3)", marginBottom: 8 }}>
-              ✅ 保存する
+              ✅ 今日のログを保存する
             </button>
-            {data.length > 0 && <div style={{ textAlign: "center", fontSize: 11, color: c.muted, marginBottom: 8 }}>📦 {data.length}件のログが保存されています</div>}
+            <div style={{ textAlign: "center", fontSize: 11, color: c.muted, marginBottom: 8 }}>
+              保存するとSupabaseに記録・下書きがリセットされます
+            </div>
           </div>
         )}
 
+        {/* ===== 今週タブ ===== */}
         {tab === 1 && (
           <div>
             <Card>
@@ -507,6 +638,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ===== グラフタブ ===== */}
         {tab === 2 && (
           <div>
             <Card>
