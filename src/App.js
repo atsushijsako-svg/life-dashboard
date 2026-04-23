@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { supabase } from "./supabase";
 
@@ -7,6 +7,7 @@ const GOALS_3M = { weight: 75, fat: 17 };
 const GOALS_6M = { weight: 73, fat: 15 };
 const GOALS_1Y = { weight: 71, fat: 13 };
 const START_DATE = new Date("2026-04-23");
+const DAILY_PROTEIN_GOAL = 130;
 
 function getWeekNumber() {
   const diff = Math.floor((new Date() - START_DATE) / (7 * 24 * 60 * 60 * 1000));
@@ -27,6 +28,14 @@ function getWeeklyGoal(weekNum) {
   };
 }
 
+function formatDecimalInput(raw) {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 3) {
+    return digits.slice(0, -1) + "." + digits.slice(-1);
+  }
+  return digits;
+}
+
 const WEEKLY = [
   { day: "月", items: ["筋トレ", "水泳", "仕事", "発信"] },
   { day: "火", items: ["休息", "仕事", "発信"] },
@@ -45,8 +54,16 @@ function todayLabel() {
 
 const TABS = ["入力", "今週", "グラフ"];
 const EMPTY_FORM = {
-  提案数: "", 発信: "", 発信メモ: "", 営業: "", 営業メモ: "",
-  筋トレ: "", 筋トレメモ: "", 水泳: "", 水泳メモ: "", 食事: "", 食事メモ: "",
+  提案数: "",
+  発信: "", 発信メモ: "",
+  営業: "", 営業メモ: "",
+  筋トレ: "", 筋トレメモ: "",
+  水泳: "", 水泳メモ: "",
+  食事: "", 食事メモ: "",
+  朝ストレッチ: "",
+  夜ストレッチ: "",
+  水2L: "",
+  タンパク質g: "",
   体重: "", 体脂肪: "", 腹回り: "",
 };
 
@@ -63,9 +80,7 @@ export default function App() {
   const weekNum = getWeekNumber();
   const weekGoal = getWeeklyGoal(weekNum);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
@@ -74,7 +89,7 @@ export default function App() {
         .select('*')
         .order('created_at', { ascending: true });
       if (error) throw error;
-      const mapped = rows.map(r => ({
+      const mapped = (rows || []).map(r => ({
         date: r.date,
         提案数: r.teian_suu,
         発信: r.hassan, 発信メモ: r.hassan_memo || "",
@@ -82,17 +97,35 @@ export default function App() {
         筋トレ: r.kintore, 筋トレメモ: r.kintore_memo || "",
         水泳: r.suiei, 水泳メモ: r.suiei_memo || "",
         食事: r.shokuji, 食事メモ: r.shokuji_memo || "",
+        朝ストレッチ: r.asa_stretch || null,
+        夜ストレッチ: r.yoru_stretch || null,
+        水2L: r.mizu_2l || null,
+        タンパク質g: r.tanpaku_g || null,
         体重: r.taiju, 体脂肪: r.taishibo, 腹回り: r.haramawari,
       }));
       setData(mapped);
     } catch (e) {
-      setError("データの読み込みに失敗しました");
+      setError("データの読み込みに失敗しました: " + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const handleMemoChange = useCallback((key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleToggle = useCallback((key, value) => {
+    setForm(prev => ({ ...prev, [key]: prev[key] === value ? "" : value }));
+  }, []);
+
+  const handleDecimalInput = useCallback((key, raw) => {
+    setForm(prev => ({ ...prev, [key]: formatDecimalInput(raw) }));
+  }, []);
+
+  const handleNumberInput = useCallback((key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }, []);
 
   const save = async () => {
     const row = {
@@ -103,6 +136,10 @@ export default function App() {
       kintore: form.筋トレ || null, kintore_memo: form.筋トレメモ || null,
       suiei: form.水泳 || null, suiei_memo: form.水泳メモ || null,
       shokuji: form.食事 || null, shokuji_memo: form.食事メモ || null,
+      asa_stretch: form.朝ストレッチ || null,
+      yoru_stretch: form.夜ストレッチ || null,
+      mizu_2l: form.水2L || null,
+      tanpaku_g: form.タンパク質g !== "" ? Number(form.タンパク質g) : null,
       taiju: form.体重 !== "" ? Number(form.体重) : null,
       taishibo: form.体脂肪 !== "" ? Number(form.体脂肪) : null,
       haramawari: form.腹回り !== "" ? Number(form.腹回り) : null,
@@ -115,7 +152,7 @@ export default function App() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
-      setError("保存に失敗しました");
+      setError("保存に失敗しました: " + e.message);
     }
   };
 
@@ -137,19 +174,22 @@ export default function App() {
   }
 
   const graphData = data.filter(d => d.体重 || d.体脂肪).map(d => ({ name: d.date, 体重: d.体重, 体脂肪: d.体脂肪 }));
+  const todayProtein = Number(form.タンパク質g) || 0;
+  const proteinRemaining = Math.max(0, DAILY_PROTEIN_GOAL - todayProtein);
 
   const c = {
     bg: "#f7f8fc", card: "#ffffff", border: "#e8eaf0",
     accent: "#3b7ef8", green: "#16a87e", red: "#e05555",
     yellow: "#e8a020", text: "#1a1d2e", muted: "#8892a4",
-    section: "#f0f2f8", workBg: "#f0f5ff", bodyBg: "#f0fdf8",
+    section: "#f0f2f8", workBg: "#f0f5ff", bodyBg: "#f0fdf8", healthBg: "#fffbf0",
   };
 
-  const Toggle = ({ val, onChange, memoVal, onMemoChange }) => (
-    <div>
+  const SimpleToggle = ({ fieldKey }) => {
+    const val = form[fieldKey];
+    return (
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         {["◎", "×"].map(v => (
-          <button key={v} onClick={() => onChange(val === v ? "" : v)} style={{
+          <button key={v} onClick={() => handleToggle(fieldKey, v)} style={{
             flex: 1, padding: "13px 0", borderRadius: 12,
             border: `2px solid ${val === v ? (v === "◎" ? c.green : c.red) : c.border}`,
             cursor: "pointer", fontSize: 17, fontWeight: 700,
@@ -158,15 +198,56 @@ export default function App() {
           }}>{v}</button>
         ))}
       </div>
-      <input type="text" value={memoVal} onChange={e => onMemoChange(e.target.value)}
-        placeholder="一言メモ（任意）"
-        style={{ width: "100%", marginTop: 6, padding: "9px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.section, fontSize: 13, color: c.text, boxSizing: "border-box", outline: "none" }}
-      />
-    </div>
+    );
+  };
+
+  // メモ付きトグル：onBlurでstateを更新してフォーカスバグを回避
+  const ToggleWithMemo = ({ fieldKey }) => {
+    const val = form[fieldKey];
+    const memoKey = `${fieldKey}メモ`;
+    const localRef = useRef(form[memoKey]);
+
+    return (
+      <div>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          {["◎", "×"].map(v => (
+            <button key={v} onClick={() => handleToggle(fieldKey, v)} style={{
+              flex: 1, padding: "13px 0", borderRadius: 12,
+              border: `2px solid ${val === v ? (v === "◎" ? c.green : c.red) : c.border}`,
+              cursor: "pointer", fontSize: 17, fontWeight: 700,
+              background: val === v ? (v === "◎" ? "#e8faf4" : "#fdeaea") : c.card,
+              color: val === v ? (v === "◎" ? c.green : c.red) : c.muted,
+            }}>{v}</button>
+          ))}
+        </div>
+        <input
+          type="text"
+          defaultValue={localRef.current}
+          onChange={e => { localRef.current = e.target.value; }}
+          onBlur={e => handleMemoChange(memoKey, e.target.value)}
+          placeholder="一言メモ（任意）"
+          style={{ width: "100%", marginTop: 6, padding: "9px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.section, fontSize: 13, color: c.text, boxSizing: "border-box", outline: "none" }}
+        />
+      </div>
+    );
+  };
+
+  const DecimalInput = ({ fieldKey, placeholder }) => (
+    <input
+      type="tel"
+      inputMode="numeric"
+      value={form[fieldKey]}
+      onChange={e => handleDecimalInput(fieldKey, e.target.value)}
+      placeholder={placeholder}
+      style={{ width: "100%", background: c.section, border: `1px solid ${c.border}`, borderRadius: 12, padding: "13px 14px", color: c.text, fontSize: 16, boxSizing: "border-box", marginTop: 6, outline: "none" }}
+    />
   );
 
-  const NumInput = ({ value, onChange, placeholder, step = "1" }) => (
-    <input type="number" step={step} value={value} onChange={e => onChange(e.target.value)}
+  const NumberInput = ({ fieldKey, placeholder }) => (
+    <input
+      type="number"
+      value={form[fieldKey]}
+      onChange={e => handleNumberInput(fieldKey, e.target.value)}
       placeholder={placeholder}
       style={{ width: "100%", background: c.section, border: `1px solid ${c.border}`, borderRadius: 12, padding: "13px 14px", color: c.text, fontSize: 16, boxSizing: "border-box", marginTop: 6, outline: "none" }}
     />
@@ -178,6 +259,10 @@ export default function App() {
 
   const SectionTitle = ({ children, color }) => (
     <div style={{ fontSize: 11, color: color || c.muted, fontWeight: 700, letterSpacing: 1.5, marginBottom: 14 }}>{children}</div>
+  );
+
+  const FieldLabel = ({ children }) => (
+    <div style={{ fontSize: 12, color: c.muted, marginBottom: 2 }}>{children}</div>
   );
 
   if (loading) return (
@@ -194,7 +279,7 @@ export default function App() {
       <div style={{ background: c.card, padding: "18px 18px 14px", borderBottom: `1px solid ${c.border}`, boxShadow: "0 1px 6px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <div style={{ fontSize: 10, color: c.muted, letterSpacing: 2 }}>LIFE DASHBOARD · Week {weekNum}</div>
-          <div style={{ fontSize: 10, color: c.green }}>● Supabase連携中</div>
+          <div style={{ fontSize: 10, color: c.green }}>● 同期中</div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
           <div>
@@ -232,7 +317,6 @@ export default function App() {
       </div>
 
       <div style={{ padding: "14px 14px 0" }}>
-
         {error && (
           <div style={{ background: "#fdeaea", border: `1px solid ${c.red}`, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13, color: c.red, textAlign: "center" }}>
             ⚠️ {error}
@@ -249,52 +333,93 @@ export default function App() {
                 ✅ 保存しました！お疲れ様でした🎉
               </div>
             )}
+
+            {/* 仕事 */}
             <Card bg={c.workBg}>
               <SectionTitle color={c.accent}>💼 仕事</SectionTitle>
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: c.muted, marginBottom: 2 }}>提案数（件）</div>
-                <NumInput value={form.提案数} onChange={v => set("提案数", v)} placeholder="0" />
+                <FieldLabel>提案数（件）</FieldLabel>
+                <NumberInput fieldKey="提案数" placeholder="0" />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: c.muted }}>発信</div>
-                <Toggle val={form.発信} onChange={v => set("発信", v)} memoVal={form.発信メモ} onMemoChange={v => set("発信メモ", v)} />
+                <FieldLabel>発信</FieldLabel>
+                <ToggleWithMemo fieldKey="発信" />
               </div>
               <div>
-                <div style={{ fontSize: 12, color: c.muted }}>営業</div>
-                <Toggle val={form.営業} onChange={v => set("営業", v)} memoVal={form.営業メモ} onMemoChange={v => set("営業メモ", v)} />
+                <FieldLabel>営業</FieldLabel>
+                <ToggleWithMemo fieldKey="営業" />
               </div>
             </Card>
+
+            {/* ボディメイク */}
             <Card bg={c.bodyBg}>
               <SectionTitle color={c.green}>💪 ボディメイク</SectionTitle>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 {["筋トレ", "水泳"].map(key => (
                   <div key={key}>
-                    <div style={{ fontSize: 12, color: c.muted }}>{key}</div>
-                    <Toggle val={form[key]} onChange={v => set(key, v)} memoVal={form[`${key}メモ`]} onMemoChange={v => set(`${key}メモ`, v)} />
+                    <FieldLabel>{key}</FieldLabel>
+                    <ToggleWithMemo fieldKey={key} />
                   </div>
                 ))}
               </div>
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: c.muted }}>食事</div>
-                <Toggle val={form.食事} onChange={v => set("食事", v)} memoVal={form.食事メモ} onMemoChange={v => set("食事メモ", v)} />
+                <FieldLabel>食事</FieldLabel>
+                <ToggleWithMemo fieldKey="食事" />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: isSun ? 14 : 0 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: c.muted }}>体重 (kg)</div>
-                  <NumInput value={form.体重} onChange={v => set("体重", v)} placeholder="78.0" step="0.1" />
+                  <FieldLabel>体重 (kg) ※3桁→自動変換</FieldLabel>
+                  <DecimalInput fieldKey="体重" placeholder="780→78.0" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: c.muted }}>体脂肪 (%)</div>
-                  <NumInput value={form.体脂肪} onChange={v => set("体脂肪", v)} placeholder="20.0" step="0.1" />
+                  <FieldLabel>体脂肪 (%) ※3桁→自動変換</FieldLabel>
+                  <DecimalInput fieldKey="体脂肪" placeholder="200→20.0" />
                 </div>
               </div>
               {isSun && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 12, color: c.muted }}>腹回り (cm) ※日曜のみ</div>
-                  <NumInput value={form.腹回り} onChange={v => set("腹回り", v)} placeholder="85.0" step="0.1" />
+                <div>
+                  <FieldLabel>腹回り (cm) ※日曜のみ・3桁→自動変換</FieldLabel>
+                  <DecimalInput fieldKey="腹回り" placeholder="850→85.0" />
                 </div>
               )}
             </Card>
+
+            {/* 健康習慣 */}
+            <Card bg={c.healthBg}>
+              <SectionTitle color={c.yellow}>🌿 健康習慣</SectionTitle>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                <div>
+                  <FieldLabel>朝ストレッチ</FieldLabel>
+                  <SimpleToggle fieldKey="朝ストレッチ" />
+                </div>
+                <div>
+                  <FieldLabel>夜ストレッチ</FieldLabel>
+                  <SimpleToggle fieldKey="夜ストレッチ" />
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <FieldLabel>水2L</FieldLabel>
+                <SimpleToggle fieldKey="水2L" />
+              </div>
+              <div>
+                <FieldLabel>今日のタンパク質 (g) ／ 目標 {DAILY_PROTEIN_GOAL}g</FieldLabel>
+                <NumberInput fieldKey="タンパク質g" placeholder="0" />
+                {todayProtein > 0 && (
+                  <div style={{ marginTop: 8, background: proteinRemaining === 0 ? "#e8faf4" : "#fffbf0", borderRadius: 10, padding: "10px 12px", border: `1px solid ${proteinRemaining === 0 ? c.green : c.yellow}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: c.muted }}>残り</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: proteinRemaining === 0 ? c.green : c.yellow }}>
+                        {proteinRemaining === 0 ? "✅ 達成！" : `あと ${proteinRemaining}g`}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 6, background: c.border, borderRadius: 6, height: 8, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.min(100, (todayProtein / DAILY_PROTEIN_GOAL) * 100)}%`, height: "100%", background: proteinRemaining === 0 ? c.green : c.yellow, borderRadius: 6, transition: "width 0.3s" }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
             <button onClick={save} style={{ width: "100%", padding: "18px 0", borderRadius: 16, border: "none", cursor: "pointer", background: c.accent, color: "#fff", fontSize: 16, fontWeight: 800, letterSpacing: 1, boxShadow: "0 4px 14px rgba(59,126,248,0.3)", marginBottom: 8 }}>
               ✅ 保存する
             </button>
@@ -316,12 +441,17 @@ export default function App() {
             </Card>
             <Card>
               <SectionTitle>達成率</SectionTitle>
-              {[{ key: "発信", label: "発信" }, { key: "営業", label: "営業" }, { key: "筋トレ", label: "筋トレ" }, { key: "水泳", label: "水泳" }, { key: "食事", label: "食事" }].map(({ key, label }) => {
+              {[
+                { key: "発信", label: "発信" }, { key: "営業", label: "営業" },
+                { key: "筋トレ", label: "筋トレ" }, { key: "水泳", label: "水泳" },
+                { key: "食事", label: "食事" }, { key: "朝ストレッチ", label: "朝ストレッチ" },
+                { key: "夜ストレッチ", label: "夜ストレッチ" }, { key: "水2L", label: "水2L" },
+              ].map(({ key, label }) => {
                 const r = rate(key);
                 const col = r >= 80 ? c.green : r >= 50 ? c.yellow : c.red;
                 return (
                   <div key={key} style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-                    <div style={{ width: 52, fontSize: 12, color: c.muted }}>{label}</div>
+                    <div style={{ width: 72, fontSize: 11, color: c.muted }}>{label}</div>
                     <div style={{ flex: 1, background: c.section, borderRadius: 8, height: 10, overflow: "hidden" }}>
                       <div style={{ width: `${r}%`, height: "100%", background: col, borderRadius: 8 }} />
                     </div>
@@ -338,13 +468,14 @@ export default function App() {
                 <div key={i} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: i < Math.min(data.length, 5) - 1 ? `1px solid ${c.border}` : "none" }}>
                   <div style={{ fontSize: 11, color: c.muted, marginBottom: 6, fontWeight: 600 }}>{d.date}</div>
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                    {["発信","営業","筋トレ","水泳","食事"].map(k => (
-                      <span key={k} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 8, background: d[k] === "◎" ? "#e8faf4" : d[k] === "×" ? "#fdeaea" : c.section, color: d[k] === "◎" ? c.green : d[k] === "×" ? c.red : c.muted, fontWeight: 600 }}>
+                    {["発信","営業","筋トレ","水泳","食事","朝ストレッチ","夜ストレッチ","水2L"].map(k => (
+                      <span key={k} style={{ fontSize: 10, padding: "3px 7px", borderRadius: 8, background: d[k] === "◎" ? "#e8faf4" : d[k] === "×" ? "#fdeaea" : c.section, color: d[k] === "◎" ? c.green : d[k] === "×" ? c.red : c.muted, fontWeight: 600 }}>
                         {k} {d[k] ?? "-"}
                       </span>
                     ))}
-                    {d.体重 && <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 8, background: "#eff6ff", color: c.accent, fontWeight: 600 }}>{d.体重}kg</span>}
-                    {d.体脂肪 && <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 8, background: "#fff0f0", color: c.red, fontWeight: 600 }}>{d.体脂肪}%</span>}
+                    {d.体重 && <span style={{ fontSize: 10, padding: "3px 7px", borderRadius: 8, background: "#eff6ff", color: c.accent, fontWeight: 600 }}>{d.体重}kg</span>}
+                    {d.体脂肪 && <span style={{ fontSize: 10, padding: "3px 7px", borderRadius: 8, background: "#fff0f0", color: c.red, fontWeight: 600 }}>{d.体脂肪}%</span>}
+                    {d.タンパク質g && <span style={{ fontSize: 10, padding: "3px 7px", borderRadius: 8, background: "#fffbf0", color: c.yellow, fontWeight: 600 }}>🥩{d.タンパク質g}g</span>}
                   </div>
                   {["発信","営業","筋トレ","水泳","食事"].filter(k => d[`${k}メモ`]).map(k => (
                     <div key={k} style={{ fontSize: 11, color: c.muted, marginTop: 4 }}>💬 {k}：{d[`${k}メモ`]}</div>
@@ -416,7 +547,7 @@ export default function App() {
             {data.length > 0 && (
               <Card>
                 <SectionTitle>データ概要</SectionTitle>
-                <div style={{ fontSize: 13, color: c.text }}>
+                <div style={{ fontSize: 13 }}>
                   {[
                     { label: "記録日数", value: `${data.length}日` },
                     { label: "開始時の体重", value: `${START.weight}kg` },
