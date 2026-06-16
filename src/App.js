@@ -137,12 +137,13 @@ export default function App() {
   const [draftRestored, setDraftRestored] = useState(false);
   const [autoSaveMsg, setAutoSaveMsg] = useState("");
   const [initialized, setInitialized] = useState(false);
+  const [autoSavedYesterday, setAutoSavedYesterday] = useState(false);
 
   const isSun = new Date().getDay() === 0;
   const weekNum = getWeekNumber();
   const weekGoal = getWeeklyGoal(weekNum);
 
-  // 起動時：localStorageから途中経過を復元 + Supabaseからデータ読み込み
+  // 起動時：localStorageから途中経過を復元 + 前日分の自動保存 + Supabaseからデータ読み込み
   useEffect(() => {
     const savedGoal = localStorage.getItem(PROTEIN_GOAL_KEY);
     if (savedGoal) setProteinGoal(Number(savedGoal));
@@ -152,6 +153,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(draft);
         if (parsed.date === todayLabel()) {
+          // 今日の下書き → 復元
           setForm(parsed.form || EMPTY_FORM);
           setProteinEntries(parsed.proteinEntries || []);
           setDraftRestored(true);
@@ -161,6 +163,25 @@ export default function App() {
             setDraftRestored(false);
           }, 3000);
         } else {
+          // 前日以前の下書き → 自動保存してから削除
+          const prevForm = parsed.form || {};
+          const prevEntries = parsed.proteinEntries || [];
+          const prevTotal = prevEntries.reduce((sum, e) => sum + (Number(e.g) || 0), 0);
+          const hasData = Object.values(prevForm).some(v => v !== "") || prevTotal > 0;
+          if (hasData) {
+            const row = {
+              date: parsed.date,
+              tanpaku_g: prevTotal > 0 ? prevTotal : null,
+              taiju: prevForm.体重 !== "" && prevForm.体重 ? Number(prevForm.体重) : null,
+              taishibo: prevForm.体脂肪 !== "" && prevForm.体脂肪 ? Number(prevForm.体脂肪) : null,
+            };
+            supabase.from('logs').insert([row]).then(({ error }) => {
+              if (!error) {
+                setAutoSavedYesterday(true);
+                setTimeout(() => setAutoSavedYesterday(false), 5000);
+              }
+            });
+          }
           localStorage.removeItem(DRAFT_KEY);
         }
       } catch (e) {
@@ -346,6 +367,12 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {autoSavedYesterday && (
+              <div style={{ background: "#eff6ff", border: `1px solid ${c.accent}`, borderRadius: 14, padding: 14, textAlign: "center", color: c.accent, fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
+                📋 前日の入力データを自動保存しました
+              </div>
+            )}
 
             {saved && (
               <div style={{ background: "#e8faf4", border: `1px solid ${c.green}`, borderRadius: 14, padding: 14, textAlign: "center", color: c.green, fontSize: 14, fontWeight: 700, marginBottom: 14 }}>
