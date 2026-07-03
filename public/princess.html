@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>プリンセスがくえん 👑</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: "Hiragino Maru Gothic ProN", "BIZ UDGothic", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+    background: linear-gradient(160deg, #ffd6ec 0%, #e8d5ff 40%, #cfe8ff 100%);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    position: relative;
+  }
+
+  /* ===== ふわふわ背景 ===== */
+  .bg-deco { position: fixed; font-size: 28px; opacity: .5; pointer-events: none; animation: floaty 8s ease-in-out infinite; z-index: 0; }
+  @keyframes floaty {
+    0%, 100% { transform: translateY(0) rotate(-6deg); }
+    50% { transform: translateY(-26px) rotate(6deg); }
+  }
+
+  /* ===== 画面共通 ===== */
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; z-index: 1; padding: 12px; overflow-y: auto; }
+  .screen.active { display: flex; }
+
+  .topbar { width: 100%; max-width: 640px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 2px; }
+  .gem-counter {
+    background: rgba(255,255,255,.85); border-radius: 999px; padding: 8px 18px;
+    font-size: 22px; font-weight: bold; color: #b03a8c; box-shadow: 0 3px 10px rgba(176,58,140,.25);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .icon-btn {
+    width: 52px; height: 52px; border-radius: 50%; border: none; font-size: 26px;
+    background: rgba(255,255,255,.85); box-shadow: 0 3px 10px rgba(0,0,0,.12); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: transform .12s;
+  }
+  .icon-btn:active { transform: scale(.88); }
+
+  /* ===== ホーム ===== */
+  .home-title {
+    margin-top: 8px; text-align: center; font-size: clamp(30px, 8vw, 52px); font-weight: 900;
+    background: linear-gradient(90deg, #ff5fa2, #b06cff, #5fa8ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 0 rgba(255,255,255,.9));
+    animation: title-bounce 2.4s ease-in-out infinite;
+  }
+  @keyframes title-bounce { 0%,100% { transform: scale(1);} 50% { transform: scale(1.04);} }
+  .home-sub { color: #a05ab8; font-size: 15px; margin: 4px 0 10px; font-weight: bold; }
+
+  .castle { font-size: clamp(56px, 15vw, 90px); line-height: 1; animation: floaty 6s ease-in-out infinite; }
+
+  .menu { display: grid; grid-template-columns: repeat(2, minmax(140px, 240px)); gap: 14px; margin-top: 14px; width: 100%; max-width: 540px; justify-content: center; padding-bottom: 24px; }
+  .menu-card {
+    border: none; border-radius: 26px; padding: 18px 10px 14px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: #fff; font-weight: 900; font-size: clamp(16px, 4vw, 21px);
+    box-shadow: 0 6px 0 rgba(0,0,0,.14), 0 10px 22px rgba(0,0,0,.15);
+    transition: transform .12s;
+    text-shadow: 0 2px 3px rgba(0,0,0,.18);
+  }
+  .menu-card:active { transform: translateY(4px) scale(.97); box-shadow: 0 2px 0 rgba(0,0,0,.14); }
+  .menu-card .emoji { font-size: clamp(36px, 9vw, 52px); line-height: 1; filter: drop-shadow(0 3px 4px rgba(0,0,0,.2)); }
+  .mc-pink   { background: linear-gradient(145deg, #ff8ec3, #ff5fa2); }
+  .mc-purple { background: linear-gradient(145deg, #c99cff, #9c5fff); }
+  .mc-blue   { background: linear-gradient(145deg, #7fc3ff, #4a8fff); }
+  .mc-green  { background: linear-gradient(145deg, #7fe3b0, #2fbf7f); }
+  .mc-orange { background: linear-gradient(145deg, #ffc37f, #ff9440); }
+
+  /* ===== ゲーム共通 ===== */
+  .prompt-box {
+    background: rgba(255,255,255,.92); border-radius: 26px; padding: 16px 22px; margin: 10px 0 6px;
+    font-size: clamp(20px, 5.5vw, 30px); font-weight: 900; color: #8a3fa8; text-align: center;
+    box-shadow: 0 5px 16px rgba(138,63,168,.2); max-width: 620px; width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .speak-again {
+    border: none; background: #ffd6ec; border-radius: 50%; width: 46px; height: 46px; font-size: 22px;
+    cursor: pointer; flex-shrink: 0; box-shadow: 0 3px 0 #f0a9cd; transition: transform .12s;
+  }
+  .speak-again:active { transform: scale(.85); }
+
+  .stage { flex: 1; width: 100%; max-width: 620px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding-bottom: 12px; }
+
+  .choices { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; width: 100%; }
+  .choice-btn {
+    border: none; border-radius: 24px; cursor: pointer; font-weight: 900;
+    background: #fff; color: #6a3fa0;
+    box-shadow: 0 6px 0 #e3c8f5, 0 10px 18px rgba(0,0,0,.12);
+    transition: transform .12s; min-width: 96px; min-height: 96px;
+    font-size: 44px; display: flex; align-items: center; justify-content: center;
+  }
+  .choice-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #e3c8f5; }
+  .choice-btn.correct { animation: pop-win .5s ease; background: #d9ffe3; }
+  .choice-btn.wrong { animation: shake .4s ease; background: #ffe3e3; }
+  @keyframes pop-win { 0% { transform: scale(1);} 40% { transform: scale(1.25) rotate(4deg);} 100% { transform: scale(1);} }
+  @keyframes shake { 0%,100% { transform: translateX(0);} 25% { transform: translateX(-10px);} 75% { transform: translateX(10px);} }
+
+  .count-field {
+    background: rgba(255,255,255,.85); border-radius: 30px; padding: 20px;
+    display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center;
+    width: 100%; min-height: 130px; box-shadow: inset 0 2px 10px rgba(160,90,190,.12);
+    font-size: clamp(34px, 9vw, 52px);
+  }
+  .count-item { animation: drop-in .45s cubic-bezier(.34,1.56,.64,1) backwards; }
+  @keyframes drop-in { from { transform: translateY(-40px) scale(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* いろ・かたち */
+  .shape-choice { width: clamp(84px, 22vw, 120px); height: clamp(84px, 22vw, 120px); font-size: clamp(44px, 12vw, 66px); }
+
+  /* ひらがな */
+  .hira-choice { width: clamp(90px, 24vw, 130px); height: clamp(90px, 24vw, 130px); font-size: clamp(48px, 13vw, 72px); color: #b03a8c; }
+  .hira-hint { font-size: clamp(20px, 5vw, 28px); color: #8a3fa8; font-weight: bold; background: rgba(255,255,255,.8); border-radius: 18px; padding: 8px 20px; }
+
+  /* ===== メモリー ===== */
+  .memory-grid { display: grid; gap: 10px; width: 100%; max-width: 480px; }
+  .mem-card {
+    aspect-ratio: 3 / 3.4; border: none; border-radius: 16px; cursor: pointer;
+    perspective: 600px; background: transparent; padding: 0;
+  }
+  .mem-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .45s cubic-bezier(.34,1.3,.64,1); }
+  .mem-card.flipped .mem-inner { transform: rotateY(180deg); }
+  .mem-face {
+    position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    border-radius: 16px; display: flex; align-items: center; justify-content: center;
+    font-size: clamp(30px, 9vw, 52px); box-shadow: 0 4px 10px rgba(0,0,0,.15);
+  }
+  .mem-back { background: linear-gradient(145deg, #ff8ec3, #b06cff); font-size: clamp(22px, 6vw, 34px); }
+  .mem-front { background: #fff; transform: rotateY(180deg); }
+  .mem-card.matched { animation: pop-win .6s ease; pointer-events: none; }
+  .mem-card.matched .mem-front { background: #fff3c9; box-shadow: 0 0 18px 4px rgba(255,200,60,.65); }
+
+  /* ===== きせかえ ===== */
+  .dress-layout { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-items: flex-start; width: 100%; }
+  .princess-frame {
+    background: rgba(255,255,255,.9); border-radius: 30px; padding: 10px;
+    box-shadow: 0 8px 24px rgba(160,90,190,.25); position: relative; overflow: hidden;
+  }
+  .princess-frame svg { display: block; width: clamp(190px, 46vw, 260px); height: auto; }
+  .dress-panels { display: flex; flex-direction: column; gap: 10px; max-width: 320px; flex: 1; min-width: 230px; }
+  .dress-panel { background: rgba(255,255,255,.85); border-radius: 20px; padding: 10px 12px; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+  .dress-panel h3 { font-size: 16px; color: #8a3fa8; margin-bottom: 8px; }
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch {
+    width: 46px; height: 46px; border-radius: 14px; border: 3px solid rgba(0,0,0,.08); cursor: pointer;
+    font-size: 24px; display: flex; align-items: center; justify-content: center; background: #fff;
+    transition: transform .12s; box-shadow: 0 3px 6px rgba(0,0,0,.12);
+  }
+  .swatch:active { transform: scale(.85); }
+  .swatch.selected { border-color: #ff5fa2; transform: scale(1.1); box-shadow: 0 0 0 3px rgba(255,95,162,.35); }
+  .done-btn {
+    border: none; border-radius: 999px; padding: 14px 34px; font-size: 22px; font-weight: 900; color: #fff;
+    background: linear-gradient(145deg, #ffb340, #ff7f40); cursor: pointer;
+    box-shadow: 0 5px 0 #d9822f, 0 10px 18px rgba(0,0,0,.18); transition: transform .12s; margin-top: 2px;
+  }
+  .done-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #d9822f; }
+
+  /* ===== スタート画面 ===== */
+  #screen-start { background: linear-gradient(160deg, #ffd6ec, #d5c2ff); z-index: 50; justify-content: center; }
+  .start-btn {
+    border: none; border-radius: 999px; padding: 22px 60px; font-size: clamp(26px, 7vw, 38px); font-weight: 900;
+    color: #fff; background: linear-gradient(145deg, #ff8ec3, #ff4f9a); cursor: pointer;
+    box-shadow: 0 8px 0 #d13b7f, 0 14px 30px rgba(209,59,127,.4);
+    animation: title-bounce 1.6s ease-in-out infinite; margin-top: 20px;
+  }
+  .start-btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #d13b7f; }
+
+  /* ===== おいわいオーバーレイ ===== */
+  #celebrate {
+    position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; background: rgba(255, 230, 245, .88); backdrop-filter: blur(4px);
+    text-align: center; padding: 20px;
+  }
+  #celebrate.active { display: flex; }
+  #celebrate .big { font-size: clamp(60px, 18vw, 110px); animation: title-bounce 1s ease-in-out infinite; }
+  #celebrate .msg { font-size: clamp(26px, 7vw, 42px); font-weight: 900; color: #d13b7f; }
+  #celebrate .sub { font-size: clamp(16px, 4.5vw, 22px); font-weight: bold; color: #8a3fa8; }
+
+  /* 紙吹雪・キラキラ */
+  .confetti, .sparkle-fx { position: fixed; z-index: 200; pointer-events: none; }
+  .confetti { top: -30px; font-size: 24px; animation: conf-fall linear forwards; }
+  @keyframes conf-fall {
+    to { transform: translateY(110vh) rotate(720deg); opacity: .6; }
+  }
+  .sparkle-fx { animation: spark-pop .7s ease-out forwards; font-size: 26px; }
+  @keyframes spark-pop {
+    0% { transform: scale(.2); opacity: 1; }
+    100% { transform: scale(1.6) translateY(-40px); opacity: 0; }
+  }
+
+  .praise-float {
+    position: fixed; z-index: 210; pointer-events: none; font-size: clamp(30px, 8vw, 46px); font-weight: 900;
+    color: #ff4f9a; text-shadow: 0 2px 0 #fff, 0 4px 10px rgba(0,0,0,.15);
+    left: 50%; top: 38%; transform: translateX(-50%);
+    animation: praise-anim 1.2s ease-out forwards;
+  }
+  @keyframes praise-anim {
+    0% { transform: translateX(-50%) scale(.3); opacity: 0; }
+    25% { transform: translateX(-50%) scale(1.2); opacity: 1; }
+    70% { transform: translateX(-50%) scale(1); opacity: 1; }
+    100% { transform: translateX(-50%) scale(1) translateY(-30px); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01s !important; transition-duration: .01s !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== スタート(音声許可のためのタップ画面) ===== -->
+<div id="screen-start" class="screen active">
+  <div class="castle">🏰</div>
+  <div class="home-title">プリンセスがくえん</div>
+  <div class="home-sub">👑 あそんで まなぼう 👑</div>
+  <button class="start-btn" onclick="startApp()">✨ はじめる ✨</button>
+</div>
+
+<!-- ===== ホーム ===== -->
+<div id="screen-home" class="screen">
+  <div class="topbar">
+    <div class="gem-counter">💎 <span id="gem-count">0</span></div>
+    <button class="icon-btn" id="mute-btn" onclick="toggleMute()" aria-label="おと">🔊</button>
+  </div>
+  <div class="castle">🏰</div>
+  <div class="home-title">プリンセスがくえん</div>
+  <div class="home-sub">あそぶ おへやを えらんでね!</div>
+  <div class="menu">
+    <button class="menu-card mc-pink" onclick="openGame('count')"><span class="emoji">🔢</span>かずのおへや</button>
+    <button class="menu-card mc-purple" onclick="openGame('shape')"><span class="emoji">🌈</span>いろとかたち</button>
+    <button class="menu-card mc-blue" onclick="openGame('hira')"><span class="emoji">🔤</span>ひらがなのおへや</button>
+    <button class="menu-card mc-green" onclick="openGame('memory')"><span class="emoji">🃏</span>ペアさがし</button>
+    <button class="menu-card mc-orange" onclick="openGame('dress')"><span class="emoji">👗</span>きせかえのおへや</button>
+  </div>
+</div>
+
+<!-- ===== かず ===== -->
+<div id="screen-count" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" onclick="goHome()">🏠</button>
+    <div class="gem-counter">💎 <span class="gem-count-mirror">0</span></div>
+    <button class="icon-btn mute-mirror" onclick="toggleMute()">🔊</button>
+  </div>
+  <div class="prompt-box"><span id="count-prompt">いくつ あるかな?</span><button class="speak-again" onclick="repeatPrompt()">🔁</button></div>
+  <div class="stage">
+    <div class="count-field" id="count-field"></div>
+    <div class="choices" id="count-choices"></div>
+  </div>
+</div>
+
+<!-- ===== いろとかたち ===== -->
+<div id="screen-shape" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" onclick="goHome()">🏠</button>
+    <div class="gem-counter">💎 <span class="gem-count-mirror">0</span></div>
+    <button class="icon-btn mute-mirror" onclick="toggleMute()">🔊</button>
+  </div>
+  <div class="prompt-box"><span id="shape-prompt"></span><button class="speak-again" onclick="repeatPrompt()">🔁</button></div>
+  <div class="stage">
+    <div class="choices" id="shape-choices"></div>
+  </div>
+</div>
+
+<!-- ===== ひらがな ===== -->
+<div id="screen-hira" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" onclick="goHome()">🏠</button>
+    <div class="gem-counter">💎 <span class="gem-count-mirror">0</span></div>
+    <button class="icon-btn mute-mirror" onclick="toggleMute()">🔊</button>
+  </div>
+  <div class="prompt-box"><span id="hira-prompt"></span><button class="speak-again" onclick="repeatPrompt()">🔁</button></div>
+  <div class="stage">
+    <div class="hira-hint" id="hira-hint"></div>
+    <div class="choices" id="hira-choices"></div>
+  </div>
+</div>
+
+<!-- ===== ペアさがし ===== -->
+<div id="screen-memory" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" onclick="goHome()">🏠</button>
+    <div class="gem-counter">💎 <span class="gem-count-mirror">0</span></div>
+    <button class="icon-btn mute-mirror" onclick="toggleMute()">🔊</button>
+  </div>
+  <div class="prompt-box"><span>おなじ カードを さがしてね!</span></div>
+  <div class="stage">
+    <div class="memory-grid" id="memory-grid"></div>
+  </div>
+</div>
+
+<!-- ===== きせかえ ===== -->
+<div id="screen-dress" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" onclick="goHome()">🏠</button>
+    <div class="gem-counter">💎 <span class="gem-count-mirror">0</span></div>
+    <button class="icon-btn mute-mirror" onclick="toggleMute()">🔊</button>
+  </div>
+  <div class="prompt-box"><span>すきに きせかえしてね!</span></div>
+  <div class="stage">
+    <div class="dress-layout">
+      <div class="princess-frame" id="princess-frame">
+        <svg viewBox="0 0 220 320" xmlns="http://www.w3.org/2000/svg" aria-label="プリンセス">
+          <!-- 背景 -->
+          <rect id="p-bg" x="0" y="0" width="220" height="320" fill="#fff0fa" rx="18"/>
+          <g id="p-bg-deco" font-size="16" opacity=".7">
+            <text x="18" y="36">✨</text><text x="180" y="60">✨</text>
+            <text x="30" y="270">🌸</text><text x="176" y="290">🌸</text>
+          </g>
+          <!-- 髪(うしろ) -->
+          <path id="p-hair-back" d="M110 30 C 60 30 48 80 52 130 C 54 160 60 185 60 185 L 160 185 C 160 185 166 160 168 130 C 172 80 160 30 110 30 Z" fill="#7a4a21"/>
+          <!-- ドレス -->
+          <path id="p-skirt" d="M110 150 C 85 150 70 190 52 265 C 48 280 60 290 110 290 C 160 290 172 280 168 265 C 150 190 135 150 110 150 Z" fill="#ff8ec3"/>
+          <path id="p-skirt-trim" d="M62 250 Q 110 268 158 250 L 162 264 Q 110 284 58 264 Z" fill="#ffffff" opacity=".55"/>
+          <path id="p-bodice" d="M92 128 C 92 118 128 118 128 128 L 132 165 C 120 174 100 174 88 165 Z" fill="#ff8ec3"/>
+          <!-- うで -->
+          <path d="M92 132 C 74 140 64 158 62 176" stroke="#ffe0cf" stroke-width="11" fill="none" stroke-linecap="round"/>
+          <path d="M128 132 C 146 140 156 158 158 176" stroke="#ffe0cf" stroke-width="11" fill="none" stroke-linecap="round"/>
+          <circle cx="61" cy="178" r="7" fill="#ffe0cf"/>
+          <circle cx="159" cy="178" r="7" fill="#ffe0cf"/>
+          <!-- くび・かお -->
+          <rect x="103" y="108" width="14" height="16" rx="6" fill="#ffe0cf"/>
+          <circle cx="110" cy="82" r="35" fill="#ffe0cf"/>
+          <!-- 髪(まえ) -->
+          <path id="p-hair-front" d="M110 42 C 84 42 72 62 74 82 C 80 66 92 58 110 58 C 128 58 140 66 146 82 C 148 62 136 42 110 42 Z" fill="#7a4a21"/>
+          <!-- かお -->
+          <circle cx="97" cy="82" r="4.2" fill="#4a2c1a"/>
+          <circle cx="123" cy="82" r="4.2" fill="#4a2c1a"/>
+          <circle cx="98.5" cy="80.5" r="1.4" fill="#fff"/>
+          <circle cx="124.5" cy="80.5" r="1.4" fill="#fff"/>
+          <circle cx="90" cy="94" r="5" fill="#ffb3c8" opacity=".8"/>
+          <circle cx="130" cy="94" r="5" fill="#ffb3c8" opacity=".8"/>
+          <path d="M102 99 Q 110 107 118 99" stroke="#c96a6a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <!-- ティアラ -->
+          <g id="p-crown-tiara">
+            <path d="M88 48 L 94 34 L 102 46 L 110 30 L 118 46 L 126 34 L 132 48 Z" fill="#ffd24a" stroke="#e0a91f" stroke-width="2"/>
+            <circle cx="110" cy="34" r="4" fill="#ff5fa2"/>
+          </g>
+          <g id="p-crown-big" style="display:none">
+            <path d="M84 50 L 84 30 L 96 42 L 110 24 L 124 42 L 136 30 L 136 50 Z" fill="#ffd24a" stroke="#e0a91f" stroke-width="2"/>
+            <circle cx="110" cy="42" r="4.5" fill="#4a8fff"/>
+            <circle cx="94" cy="44" r="3" fill="#ff5fa2"/>
+            <circle cx="126" cy="44" r="3" fill="#ff5fa2"/>
+          </g>
+          <g id="p-crown-flower" style="display:none" font-size="15">
+            <text x="82" y="52">🌸</text><text x="102" y="44">🌼</text><text x="122" y="52">🌸</text>
+          </g>
+          <!-- アクセサリー(右手) -->
+          <g id="p-acc-wand"><path d="M159 176 L 176 132" stroke="#ffd24a" stroke-width="4" stroke-linecap="round"/><text x="164" y="132" font-size="20">⭐</text></g>
+          <g id="p-acc-flower" style="display:none"><text x="148" y="188" font-size="24">💐</text></g>
+          <g id="p-acc-cat" style="display:none"><text x="146" y="192" font-size="26">🐱</text></g>
+          <g id="p-acc-none" style="display:none"></g>
+        </svg>
+      </div>
+      <div class="dress-panels">
+        <div class="dress-panel">
+          <h3>👗 ドレスの いろ</h3>
+          <div class="swatch-row" id="sw-dress"></div>
+        </div>
+        <div class="dress-panel">
+          <h3>💇 かみの いろ</h3>
+          <div class="swatch-row" id="sw-hair"></div>
+        </div>
+        <div class="dress-panel">
+          <h3>👑 あたまの かざり</h3>
+          <div class="swatch-row" id="sw-crown"></div>
+        </div>
+        <div class="dress-panel">
+          <h3>🎀 もちもの</h3>
+          <div class="swatch-row" id="sw-acc"></div>
+        </div>
+        <div style="text-align:center"><button class="done-btn" onclick="dressDone()">✨ できあがり! ✨</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== おいわい ===== -->
+<div id="celebrate">
+  <div class="big" id="cel-emoji">🎉👸🎉</div>
+  <div class="msg" id="cel-msg">すごい!</div>
+  <div class="sub" id="cel-sub"></div>
+  <button class="start-btn" style="font-size:24px; padding:16px 44px" onclick="closeCelebrate()">つぎへ ➡️</button>
+</div>
+
+<script>
+"use strict";
+
+/* ================= ユーティリティ ================= */
+const $ = (id) => document.getElementById(id);
+const rand = (n) => Math.floor(Math.random() * n);
+const shuffle = (arr) => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pick = (arr) => arr[rand(arr.length)];
+
+/* ================= 音まわり ================= */
+let audioCtx = null;
+let muted = localStorage.getItem("pg_muted") === "1";
+let jaVoice = null;
+let lastPromptText = "";
+
+function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* 音なしでも遊べる */ }
+  }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function pickJaVoice() {
+  if (!("speechSynthesis" in window)) return;
+  const voices = speechSynthesis.getVoices();
+  jaVoice = voices.find(v => v.lang.startsWith("ja") && /Kyoko|Google|O-Ren|Otoya/i.test(v.name))
+         || voices.find(v => v.lang.startsWith("ja")) || null;
+}
+if ("speechSynthesis" in window) {
+  pickJaVoice();
+  speechSynthesis.onvoiceschanged = pickJaVoice;
+}
+
+function speak(text, { rate = 0.92, pitch = 1.25 } = {}) {
+  if (muted || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ja-JP";
+  if (jaVoice) u.voice = jaVoice;
+  u.rate = rate;
+  u.pitch = pitch;
+  speechSynthesis.speak(u);
+}
+
+function setPrompt(text) { lastPromptText = text; speak(text); }
+function repeatPrompt() { if (lastPromptText) speak(lastPromptText); }
+
+function tone(freq, start, dur, type = "sine", vol = 0.18) {
+  if (!audioCtx || muted) return;
+  const t = audioCtx.currentTime + start;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + dur + 0.05);
+}
+const sfxTap = () => tone(660, 0, 0.09, "triangle", 0.12);
+const sfxCorrect = () => { tone(523, 0, .14); tone(659, .1, .14); tone(784, .2, .2); tone(1047, .32, .3); };
+const sfxWrong = () => { tone(220, 0, .18, "triangle", 0.1); };
+const sfxFanfare = () => { [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f, i*.12, .22, i>4?"triangle":"sine", .16)); };
+const sfxFlip = () => tone(880, 0, 0.07, "triangle", 0.1);
+
+function toggleMute() {
+  muted = !muted;
+  localStorage.setItem("pg_muted", muted ? "1" : "0");
+  if (muted && "speechSynthesis" in window) speechSynthesis.cancel();
+  document.querySelectorAll("#mute-btn, .mute-mirror").forEach(b => b.textContent = muted ? "🔇" : "🔊");
+}
+
+/* ================= ごほうび(💎) ================= */
+let gems = parseInt(localStorage.getItem("pg_gems") || "0", 10) || 0;
+function renderGems() {
+  $("gem-count").textContent = gems;
+  document.querySelectorAll(".gem-count-mirror").forEach(el => el.textContent = gems);
+}
+const PRAISES = ["せいかい!", "すごーい!", "やったね!", "てんさい!", "ピンポーン!", "さすが プリンセス!"];
+function addGem(n = 1) {
+  gems += n;
+  localStorage.setItem("pg_gems", String(gems));
+  renderGems();
+  if (gems % 10 === 0) {
+    setTimeout(() => showCelebrate("🏆👸🏆", `ほうせき ${gems}こ あつまったよ!`, "キラキラ プリンセスだね!", true), 900);
+  }
+}
+
+function praiseFloat() {
+  const el = document.createElement("div");
+  el.className = "praise-float";
+  el.textContent = pick(PRAISES);
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
+
+function sparkleAt(x, y) {
+  for (let i = 0; i < 6; i++) {
+    const s = document.createElement("div");
+    s.className = "sparkle-fx";
+    s.textContent = pick(["✨", "⭐", "💖", "💎"]);
+    s.style.left = (x - 20 + rand(60)) + "px";
+    s.style.top = (y - 20 + rand(40)) + "px";
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 800);
+  }
+}
+
+function confettiBurst(count = 40) {
+  const emojis = ["🎀", "💖", "⭐", "✨", "💎", "🌸", "👑", "🦄"];
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement("div");
+    c.className = "confetti";
+    c.textContent = pick(emojis);
+    c.style.left = rand(100) + "vw";
+    c.style.animationDuration = (2 + Math.random() * 2.2) + "s";
+    c.style.animationDelay = (Math.random() * 0.7) + "s";
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 5200);
+  }
+}
+
+/* 正解時の共通演出 */
+function rewardCorrect(evtTarget, extraSpeech) {
+  sfxCorrect();
+  praiseFloat();
+  addGem(1);
+  if (evtTarget) {
+    const r = evtTarget.getBoundingClientRect();
+    sparkleAt(r.left + r.width / 2, r.top);
+  }
+  if (extraSpeech) setTimeout(() => speak(extraSpeech), 300);
+  else speak(pick(PRAISES));
+}
+function rewardWrong(el, hintSpeech) {
+  sfxWrong();
+  if (el) { el.classList.add("wrong"); setTimeout(() => el.classList.remove("wrong"), 450); }
+  speak(hintSpeech || pick(["ざんねん! もういっかい!", "おしい! もういちど!"]));
+}
+
+/* ================= 画面遷移 ================= */
+let currentScreen = "start";
+function showScreen(name) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $("screen-" + name).classList.add("active");
+  currentScreen = name;
+}
+function goHome() {
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  showScreen("home");
+  renderGems();
+}
+function startApp() {
+  initAudio();
+  document.querySelectorAll("#mute-btn, .mute-mirror").forEach(b => b.textContent = muted ? "🔇" : "🔊");
+  goHome();
+  speak("プリンセスがくえんへ ようこそ! あそぶ おへやを えらんでね!");
+  sfxFanfare();
+}
+
+const GAME_STARTERS = {};
+function openGame(name) {
+  initAudio();
+  sfxTap();
+  showScreen(name);
+  renderGems();
+  GAME_STARTERS[name]();
+}
+
+/* ================= おいわいオーバーレイ ================= */
+let celebrateCallback = null;
+function showCelebrate(emoji, msg, sub, fanfare) {
+  $("cel-emoji").textContent = emoji;
+  $("cel-msg").textContent = msg;
+  $("cel-sub").textContent = sub || "";
+  $("celebrate").classList.add("active");
+  confettiBurst(60);
+  if (fanfare) sfxFanfare();
+  speak(msg + " " + (sub || ""));
+}
+function closeCelebrate() {
+  $("celebrate").classList.remove("active");
+  sfxTap();
+  if (celebrateCallback) { const cb = celebrateCallback; celebrateCallback = null; cb(); }
+}
+
+/* ================= 1. かずのおへや ================= */
+const COUNT_ITEMS = ["👑", "💎", "🎀", "🦄", "🌸", "🍓", "🧁", "🦋", "⭐", "🌷"];
+const NUM_READING = ["", "いち", "に", "さん", "よん", "ご", "ろく", "なな", "はち", "きゅう", "じゅう"];
+let countAnswer = 0;
+let countLock = false;
+
+GAME_STARTERS.count = function newCountRound() {
+  countLock = false;
+  const n = 1 + rand(10);
+  countAnswer = n;
+  const item = pick(COUNT_ITEMS);
+  const field = $("count-field");
+  field.innerHTML = "";
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement("span");
+    s.className = "count-item";
+    s.textContent = item;
+    s.style.animationDelay = (i * 0.1) + "s";
+    field.appendChild(s);
+  }
+  const choiceSet = new Set([n]);
+  while (choiceSet.size < 3) {
+    const c = Math.max(1, Math.min(10, n + (rand(5) - 2)));
+    choiceSet.add(c);
+  }
+  const box = $("count-choices");
+  box.innerHTML = "";
+  shuffle([...choiceSet]).forEach(c => {
+    const b = document.createElement("button");
+    b.className = "choice-btn";
+    b.textContent = c;
+    b.onclick = (e) => {
+      if (countLock) return;
+      if (c === countAnswer) {
+        countLock = true;
+        b.classList.add("correct");
+        rewardCorrect(e.target, `せいかい! ${NUM_READING[n]}こ だね!`);
+        setTimeout(newCountRound, 1700);
+      } else {
+        rewardWrong(b, "ゆっくり かぞえてみよう!");
+      }
+    };
+    box.appendChild(b);
+  });
+  setTimeout(() => setPrompt("いくつ あるかな? かぞえてみてね!"), 300);
+};
+
+/* ================= 2. いろとかたち ================= */
+const COLORS = [
+  { name: "ピンク", css: "#ff7fb8" }, { name: "あか", css: "#ff5252" },
+  { name: "あお", css: "#4a8fff" }, { name: "きいろ", css: "#ffd23f" },
+  { name: "みどり", css: "#3fce7a" }, { name: "むらさき", css: "#a86ae0" },
+  { name: "オレンジ", css: "#ff9440" }, { name: "みずいろ", css: "#5fd0e8" },
+];
+const SHAPES = [
+  { name: "ほし", emoji: "⭐" }, { name: "ハート", emoji: "❤️" },
+  { name: "まる", emoji: "🔵" }, { name: "さんかく", emoji: "🔺" },
+  { name: "しかく", emoji: "🟩" }, { name: "おつきさま", emoji: "🌙" },
+];
+let shapeLock = false;
+
+GAME_STARTERS.shape = function newShapeRound() {
+  shapeLock = false;
+  const isColor = Math.random() < 0.5;
+  const box = $("shape-choices");
+  box.innerHTML = "";
+
+  if (isColor) {
+    const opts = shuffle(COLORS).slice(0, 4);
+    const target = pick(opts);
+    $("shape-prompt").textContent = `「${target.name}」は どれかな?`;
+    shuffle(opts).forEach(c => {
+      const b = document.createElement("button");
+      b.className = "choice-btn shape-choice";
+      b.style.background = c.css;
+      b.style.boxShadow = "0 6px 0 rgba(0,0,0,.18), 0 10px 18px rgba(0,0,0,.12)";
+      b.textContent = "👗";
+      b.onclick = (e) => {
+        if (shapeLock) return;
+        if (c.name === target.name) {
+          shapeLock = true;
+          b.classList.remove("wrong"); b.classList.add("correct");
+          rewardCorrect(e.target, `せいかい! ${target.name}の ドレス きれいだね!`);
+          setTimeout(GAME_STARTERS.shape, 1700);
+        } else {
+          rewardWrong(b, `それは ${c.name} だね! ${target.name}は どれかな?`);
+        }
+      };
+      box.appendChild(b);
+    });
+    setTimeout(() => setPrompt(`${target.name}の ドレスは どれかな?`), 300);
+  } else {
+    const opts = shuffle(SHAPES).slice(0, 4);
+    const target = pick(opts);
+    $("shape-prompt").textContent = `「${target.name}」は どれかな?`;
+    shuffle(opts).forEach(s => {
+      const b = document.createElement("button");
+      b.className = "choice-btn shape-choice";
+      b.textContent = s.emoji;
+      b.onclick = (e) => {
+        if (shapeLock) return;
+        if (s.name === target.name) {
+          shapeLock = true;
+          b.classList.add("correct");
+          rewardCorrect(e.target, `せいかい! ${target.name} みーつけた!`);
+          setTimeout(GAME_STARTERS.shape, 1700);
+        } else {
+          rewardWrong(b, `それは ${s.name} だね! ${target.name}は どれかな?`);
+        }
+      };
+      box.appendChild(b);
+    });
+    setTimeout(() => setPrompt(`${target.name}は どれかな?`), 300);
+  }
+};
+
+/* ================= 3. ひらがなのおへや ================= */
+const HIRAGANA = [
+  ["あ","あり","🐜"],["い","いちご","🍓"],["う","うさぎ","🐰"],["え","えほん","📖"],["お","おうじさま","🤴"],
+  ["か","かさ","☂️"],["き","きらきら","✨"],["く","くつ","👠"],["け","けーき","🍰"],["こ","こねこ","🐱"],
+  ["さ","さかな","🐟"],["し","しろ(おしろ)","🏰"],["す","すみれ","💐"],["せ","せみ","🦗"],["そ","そら","🌤️"],
+  ["た","たいよう","☀️"],["ち","ちょうちょ","🦋"],["つ","つき","🌙"],["て","てんとうむし","🐞"],["と","とけい","⏰"],
+  ["な","なし","🍐"],["に","にじ","🌈"],["ぬ","ぬいぐるみ","🧸"],["ね","ねこ","🐈"],["の","のはら","🌼"],
+  ["は","はな","🌸"],["ひ","ひめさま","👸"],["ふ","ふうせん","🎈"],["へ","へび","🐍"],["ほ","ほし","⭐"],
+  ["ま","まほう","🪄"],["み","みかん","🍊"],["む","むし","🐛"],["め","めろん","🍈"],["も","もも","🍑"],
+  ["や","やま","⛰️"],["ゆ","ゆき","⛄"],["よ","よる","🌃"],
+  ["ら","らいおん","🦁"],["り","りぼん","🎀"],["る","るびー","💎"],["れ","れもん","🍋"],["ろ","ろうそく","🕯️"],
+  ["わ","わんわん","🐶"],["を","ほんを よむ","📚"],["ん","ぷりん","🍮"],
+];
+let hiraLock = false;
+
+GAME_STARTERS.hira = function newHiraRound() {
+  hiraLock = false;
+  const opts = shuffle(HIRAGANA).slice(0, 3);
+  const target = pick(opts);
+  const [ch, word, emoji] = target;
+  $("hira-prompt").textContent = `「${ch}」は どれかな?`;
+  $("hira-hint").textContent = `${emoji} ${word} の 「${ch}」`;
+  const box = $("hira-choices");
+  box.innerHTML = "";
+  shuffle(opts).forEach(([c]) => {
+    const b = document.createElement("button");
+    b.className = "choice-btn hira-choice";
+    b.textContent = c;
+    b.onclick = (e) => {
+      if (hiraLock) return;
+      if (c === ch) {
+        hiraLock = true;
+        b.classList.add("correct");
+        rewardCorrect(e.target, `せいかい! ${word}の 「${ch}」だね!`);
+        setTimeout(GAME_STARTERS.hira, 1900);
+      } else {
+        rewardWrong(b, `それは 「${c}」だね! 「${ch}」は どれかな?`);
+      }
+    };
+    box.appendChild(b);
+  });
+  setTimeout(() => setPrompt(`${word} の 「${ch}」は どれかな?`), 300);
+};
+
+/* ================= 4. ペアさがし ================= */
+const MEM_EMOJIS = ["👑", "💎", "🦄", "🌈", "🎀", "🏰", "🧚", "🌸", "🍭", "👸"];
+let memPairs = 3;
+let memFirst = null;
+let memLock = false;
+let memMatched = 0;
+
+GAME_STARTERS.memory = function newMemoryRound(keepLevel) {
+  if (!keepLevel) memPairs = 3;
+  memFirst = null; memLock = false; memMatched = 0;
+  const emojis = shuffle(MEM_EMOJIS).slice(0, memPairs);
+  const cards = shuffle([...emojis, ...emojis]);
+  const grid = $("memory-grid");
+  grid.innerHTML = "";
+  const cols = cards.length <= 6 ? 3 : 4;
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  cards.forEach(em => {
+    const card = document.createElement("button");
+    card.className = "mem-card";
+    card.innerHTML = `<div class="mem-inner"><div class="mem-face mem-back">💗</div><div class="mem-face mem-front">${em}</div></div>`;
+    card.dataset.emoji = em;
+    card.onclick = () => flipCard(card);
+    grid.appendChild(card);
+  });
+  setTimeout(() => setPrompt("おなじ カードの ペアを さがしてね!"), 300);
+};
+
+function flipCard(card) {
+  if (memLock || card.classList.contains("flipped")) return;
+  sfxFlip();
+  card.classList.add("flipped");
+  if (!memFirst) { memFirst = card; return; }
+  const a = memFirst, b = card;
+  memFirst = null;
+  if (a.dataset.emoji === b.dataset.emoji) {
+    a.classList.add("matched"); b.classList.add("matched");
+    memMatched++;
+    rewardCorrect(b, "ペア みーつけた!");
+    if (memMatched === memPairs) {
+      setTimeout(() => {
+        memPairs = Math.min(memPairs + 1, 6);
+        celebrateCallback = () => GAME_STARTERS.memory(true);
+        showCelebrate("💖👸💖", "ぜんぶ みつけたね!", "つぎは もっと ふえるよ!", true);
+      }, 1100);
+    }
+  } else {
+    memLock = true;
+    sfxWrong();
+    setTimeout(() => {
+      a.classList.remove("flipped");
+      b.classList.remove("flipped");
+      memLock = false;
+    }, 950);
+  }
+}
+
+/* ================= 5. きせかえのおへや ================= */
+const DRESS_COLORS = [
+  { css: "#ff8ec3", name: "ピンク" }, { css: "#a86ae0", name: "むらさき" },
+  { css: "#5fa8ff", name: "あお" }, { css: "#ffd23f", name: "きいろ" },
+  { css: "#5fd8a8", name: "みどり" }, { css: "#ff6b6b", name: "あか" },
+];
+const HAIR_COLORS = [
+  { css: "#7a4a21", name: "ちゃいろ" }, { css: "#2b2b2b", name: "くろ" },
+  { css: "#f0c14b", name: "きんいろ" }, { css: "#e88ac0", name: "ピンク" },
+];
+const CROWNS = [
+  { id: "tiara", emoji: "👑", name: "ティアラ" },
+  { id: "big", emoji: "💎", name: "おうかん" },
+  { id: "flower", emoji: "🌸", name: "おはな" },
+];
+const ACCS = [
+  { id: "wand", emoji: "🪄", name: "まほうのステッキ" },
+  { id: "flower", emoji: "💐", name: "はなたば" },
+  { id: "cat", emoji: "🐱", name: "ねこちゃん" },
+  { id: "none", emoji: "✋", name: "なし" },
+];
+
+function buildSwatches(rowId, items, render, onSelect) {
+  const row = $(rowId);
+  row.innerHTML = "";
+  items.forEach((item, i) => {
+    const s = document.createElement("button");
+    s.className = "swatch" + (i === 0 ? " selected" : "");
+    render(s, item);
+    s.onclick = () => {
+      row.querySelectorAll(".swatch").forEach(x => x.classList.remove("selected"));
+      s.classList.add("selected");
+      sfxTap();
+      onSelect(item);
+      speak(item.name, { rate: 1 });
+    };
+    row.appendChild(s);
+  });
+}
+
+let dressBuilt = false;
+GAME_STARTERS.dress = function () {
+  if (dressBuilt) { setTimeout(() => setPrompt("すきに きせかえしてね!"), 300); return; }
+  dressBuilt = true;
+  buildSwatches("sw-dress", DRESS_COLORS, (s, c) => { s.style.background = c.css; }, (c) => {
+    ["p-skirt", "p-bodice"].forEach(id => $(id).setAttribute("fill", c.css));
+  });
+  buildSwatches("sw-hair", HAIR_COLORS, (s, c) => { s.style.background = c.css; }, (c) => {
+    ["p-hair-back", "p-hair-front"].forEach(id => $(id).setAttribute("fill", c.css));
+  });
+  buildSwatches("sw-crown", CROWNS, (s, c) => { s.textContent = c.emoji; }, (c) => {
+    CROWNS.forEach(x => $("p-crown-" + x.id).style.display = x.id === c.id ? "" : "none");
+  });
+  buildSwatches("sw-acc", ACCS, (s, a) => { s.textContent = a.emoji; }, (a) => {
+    ACCS.forEach(x => { const el = $("p-acc-" + x.id); if (el) el.style.display = x.id === a.id ? "" : "none"; });
+  });
+  setTimeout(() => setPrompt("すきに きせかえしてね!"), 300);
+};
+
+function dressDone() {
+  addGem(2);
+  sfxFanfare();
+  showCelebrate("👸✨👸", "とっても すてき!", "せかいいち かわいい プリンセスだよ!", false);
+}
+
+/* ================= 背景デコ ================= */
+(function makeBgDeco() {
+  const emojis = ["🌸", "✨", "💖", "🦋", "⭐", "🎀", "🌷", "☁️"];
+  for (let i = 0; i < 12; i++) {
+    const d = document.createElement("div");
+    d.className = "bg-deco";
+    d.textContent = pick(emojis);
+    d.style.left = rand(94) + "vw";
+    d.style.top = rand(94) + "vh";
+    d.style.animationDelay = (Math.random() * 6) + "s";
+    d.style.fontSize = (18 + rand(22)) + "px";
+    document.body.appendChild(d);
+  }
+})();
+
+renderGems();
+</script>
+</body>
+</html>
