@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>サメサメアドベンチャー 🦈</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: "Hiragino Maru Gothic ProN", "BIZ UDGothic", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+    background: #04355e;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  #game { position: fixed; inset: 0; display: block; }
+
+  /* ===== HUD ===== */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: none; align-items: center; justify-content: space-between;
+    padding: 10px 12px; gap: 8px; pointer-events: none;
+  }
+  #hud.active { display: flex; }
+  .hud-chip {
+    background: rgba(255,255,255,.88); border-radius: 999px; padding: 7px 16px;
+    font-size: 20px; font-weight: 900; color: #0a5a8a;
+    box-shadow: 0 3px 10px rgba(0,0,0,.25); white-space: nowrap;
+  }
+  #hearts { letter-spacing: 2px; }
+  .icon-btn {
+    width: 50px; height: 50px; border-radius: 50%; border: none; font-size: 24px;
+    background: rgba(255,255,255,.88); box-shadow: 0 3px 10px rgba(0,0,0,.25); cursor: pointer;
+    pointer-events: auto; transition: transform .12s;
+  }
+  .icon-btn:active { transform: scale(.88); }
+
+  /* ===== オーバーレイ ===== */
+  .overlay {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: rgba(2, 30, 56, .72); backdrop-filter: blur(3px); text-align: center; padding: 20px;
+  }
+  .overlay.active { display: flex; }
+  .ov-emoji { font-size: clamp(70px, 20vw, 120px); line-height: 1; animation: bob 2s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) rotate(-4deg);} 50% { transform: translateY(-16px) rotate(4deg);} }
+  .ov-title {
+    font-size: clamp(30px, 9vw, 56px); font-weight: 900;
+    background: linear-gradient(90deg, #6fd8ff, #b0f0ff, #6fd8ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.5));
+  }
+  .ov-sub { color: #d5f2ff; font-size: clamp(15px, 4vw, 20px); font-weight: bold; line-height: 1.9; }
+  .ov-score { color: #ffe37f; font-size: clamp(24px, 7vw, 40px); font-weight: 900; text-shadow: 0 3px 8px rgba(0,0,0,.5); }
+  .big-btn {
+    border: none; border-radius: 999px; padding: 18px 52px; font-size: clamp(22px, 6vw, 32px); font-weight: 900;
+    color: #fff; background: linear-gradient(145deg, #3fb7ff, #1877d2); cursor: pointer;
+    box-shadow: 0 7px 0 #0d5aa8, 0 14px 30px rgba(0,0,0,.4);
+    animation: bob 1.8s ease-in-out infinite; margin-top: 8px;
+  }
+  .big-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #0d5aa8; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01s !important; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="hud-chip">⭐ <span id="score">0</span></div>
+  <div class="hud-chip" id="hearts">❤️❤️❤️</div>
+  <div class="hud-chip">Lv.<span id="level">1</span></div>
+  <button class="icon-btn" id="mute-btn">🔊</button>
+</div>
+
+<div class="overlay active" id="ov-start">
+  <div class="ov-emoji">🦈</div>
+  <div class="ov-title">サメサメアドベンチャー</div>
+  <div class="ov-sub">
+    ゆびで うごかして おさかなを パクパク!<br>
+    あわの たまが じどうで でるよ 🫧<br>
+    🪼クラゲと 🐡フグには ぶつからないでね!
+  </div>
+  <button class="big-btn" id="btn-start">🫧 スタート!</button>
+</div>
+
+<div class="overlay" id="ov-over">
+  <div class="ov-emoji" id="over-emoji">🦈💤</div>
+  <div class="ov-title" id="over-title">おしまい!</div>
+  <div class="ov-score">⭐ スコア: <span id="final-score">0</span></div>
+  <div class="ov-sub" id="best-line">👑 さいこうきろく: 0</div>
+  <button class="big-btn" id="btn-retry">もういっかい!</button>
+</div>
+
+<script>
+"use strict";
+
+/* ================= 基本セットアップ ================= */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+
+/* ================= 音 ================= */
+let audioCtx = null;
+let muted = localStorage.getItem("shark_muted") === "1";
+
+function initAudio() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+}
+function tone(freq, start, dur, type = "sine", vol = 0.15) {
+  if (!audioCtx || muted) return;
+  const t = audioCtx.currentTime + start;
+  const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + dur + 0.05);
+}
+const sfxPop = () => { tone(rand(700, 900), 0, .08, "triangle", .14); };
+const sfxChomp = () => { tone(320, 0, .07, "square", .1); tone(180, .05, .1, "square", .12); };
+const sfxShoot = () => { tone(520, 0, .05, "sine", .06); };
+const sfxHurt = () => { tone(200, 0, .2, "sawtooth", .12); tone(140, .12, .25, "sawtooth", .1); };
+const sfxLevel = () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .1, .18, "sine", .14)); };
+const sfxOver = () => { [392, 330, 262, 196].forEach((f, i) => tone(f, i * .18, .25, "triangle", .13)); };
+
+function speak(text) {
+  if (muted || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ja-JP"; u.rate = 1; u.pitch = 1.2;
+  speechSynthesis.speak(u);
+}
+
+const muteBtn = document.getElementById("mute-btn");
+muteBtn.textContent = muted ? "🔇" : "🔊";
+muteBtn.addEventListener("click", () => {
+  muted = !muted;
+  localStorage.setItem("shark_muted", muted ? "1" : "0");
+  if (muted && "speechSynthesis" in window) speechSynthesis.cancel();
+  muteBtn.textContent = muted ? "🔇" : "🔊";
+});
+
+/* ================= ゲーム状態 ================= */
+let state = "start"; // start | play | over
+let score = 0, hearts = 3, level = 1;
+let best = parseInt(localStorage.getItem("shark_best") || "0", 10) || 0;
+let elapsed = 0;
+
+const shark = { x: 0, y: 0, tx: 0, ty: 0, r: 30, facing: 1, mouth: 0, invincible: 0 };
+
+let fishes = [];   // {x,y,vx,vy,r,emoji,pts,hazard,hp,wob,wobSpeed,flip}
+let bubbles = [];  // 弾 {x,y,vx,vy,r}
+let effects = [];  // {x,y,text,t,vy} or {x,y,t,particle,vx,vy,emoji}
+let ambient = [];  // 背景の泡
+let shootTimer = 0, spawnTimer = 0, hazardTimer = 0;
+
+const EDIBLE = [
+  { emoji: "🐟", r: 18, pts: 10 },
+  { emoji: "🐠", r: 18, pts: 10 },
+  { emoji: "🐟", r: 18, pts: 10 },
+  { emoji: "🐠", r: 18, pts: 10 },
+  { emoji: "🦐", r: 16, pts: 15 },
+  { emoji: "🦑", r: 22, pts: 20 },
+];
+const HAZARDS = [
+  { emoji: "🪼", r: 24, pts: 30, hp: 2 },
+  { emoji: "🐡", r: 24, pts: 30, hp: 2 },
+];
+
+function speedMul() { return 1 + (level - 1) * 0.22; }
+
+/* ================= 入力 ================= */
+function pointerPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+}
+function onPoint(e) {
+  if (state !== "play") return;
+  const p = pointerPos(e);
+  shark.tx = p.x; shark.ty = p.y;
+  if (e.cancelable) e.preventDefault();
+}
+canvas.addEventListener("pointerdown", onPoint);
+canvas.addEventListener("pointermove", (e) => { if (e.buttons || e.pointerType === "touch") onPoint(e); });
+canvas.addEventListener("touchstart", onPoint, { passive: false });
+canvas.addEventListener("touchmove", onPoint, { passive: false });
+
+const keys = {};
+window.addEventListener("keydown", (e) => { keys[e.key] = true; });
+window.addEventListener("keyup", (e) => { keys[e.key] = false; });
+
+/* ================= スポーン ================= */
+function spawnFish(hazard) {
+  const type = hazard ? pick(HAZARDS) : pick(EDIBLE);
+  const fromLeft = Math.random() < 0.5;
+  const speed = rand(1.2, 2.4) * speedMul();
+  fishes.push({
+    x: fromLeft ? -40 : W + 40,
+    y: rand(70, H - 70),
+    vx: fromLeft ? speed : -speed,
+    vy: 0,
+    r: type.r,
+    emoji: type.emoji,
+    pts: type.pts,
+    hazard: !!hazard,
+    hp: type.hp || 1,
+    wob: rand(0, Math.PI * 2),
+    wobSpeed: rand(1.5, 3),
+    wobAmp: rand(0.4, 1.2),
+    flip: fromLeft, // 絵文字は左向きなので右へ泳ぐときは反転
+    flash: 0,
+  });
+}
+
+function addText(x, y, text, color) {
+  effects.push({ kind: "text", x, y, text, color: color || "#ffe37f", t: 0 });
+}
+function addBurst(x, y, emoji, n) {
+  for (let i = 0; i < (n || 6); i++) {
+    const a = rand(0, Math.PI * 2), s = rand(1, 3.5);
+    effects.push({ kind: "p", x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1, emoji, t: 0 });
+  }
+}
+
+/* ================= ゲーム進行 ================= */
+const hud = document.getElementById("hud");
+const scoreEl = document.getElementById("score");
+const heartsEl = document.getElementById("hearts");
+const levelEl = document.getElementById("level");
+
+function renderHud() {
+  scoreEl.textContent = score;
+  heartsEl.textContent = "❤️".repeat(hearts) + "🤍".repeat(Math.max(0, 3 - hearts));
+  levelEl.textContent = level;
+}
+
+function startGame() {
+  initAudio();
+  state = "play";
+  score = 0; hearts = 3; level = 1; elapsed = 0;
+  fishes = []; bubbles = []; effects = [];
+  shark.x = shark.tx = W / 2; shark.y = shark.ty = H / 2;
+  shark.invincible = 0; shark.facing = 1;
+  shootTimer = 0; spawnTimer = 0; hazardTimer = 0;
+  for (let i = 0; i < 6; i++) spawnFish(false);
+  document.getElementById("ov-start").classList.remove("active");
+  document.getElementById("ov-over").classList.remove("active");
+  hud.classList.add("active");
+  renderHud();
+  speak("サメさんの ぼうけん スタート!");
+  sfxLevel();
+}
+
+function gameOver() {
+  state = "over";
+  hud.classList.remove("active");
+  const isBest = score > best;
+  if (isBest) { best = score; localStorage.setItem("shark_best", String(best)); }
+  document.getElementById("final-score").textContent = score;
+  document.getElementById("best-line").textContent = (isBest ? "🎉 しんきろく! " : "👑 さいこうきろく: ") + best;
+  document.getElementById("over-emoji").textContent = isBest ? "🏆🦈🏆" : "🦈💤";
+  document.getElementById("over-title").textContent = isBest ? "すごい!しんきろく!" : "おしまい!";
+  document.getElementById("ov-over").classList.add("active");
+  sfxOver();
+  speak(isBest ? "すごい! しんきろくだよ!" : "おつかれさま! また あそんでね!");
+}
+
+document.getElementById("btn-start").addEventListener("click", startGame);
+document.getElementById("btn-retry").addEventListener("click", startGame);
+
+function addScore(n, x, y) {
+  score += n;
+  addText(x, y, "+" + n);
+  const newLevel = 1 + Math.floor(score / 150);
+  if (newLevel > level) {
+    level = newLevel;
+    addText(W / 2, H / 2 - 60, "レベルアップ! 🎉", "#7fffd4");
+    sfxLevel();
+  }
+  renderHud();
+}
+
+function hurtShark() {
+  if (shark.invincible > 0) return;
+  hearts--;
+  shark.invincible = 1.6;
+  addBurst(shark.x, shark.y, "💫", 8);
+  addText(shark.x, shark.y - 50, "いたい!", "#ff9f9f");
+  sfxHurt();
+  renderHud();
+  if (hearts <= 0) setTimeout(gameOver, 500);
+}
+
+/* ================= 更新 ================= */
+function update(dt) {
+  elapsed += dt;
+
+  // キーボード操作
+  const kSpeed = 380 * dt;
+  if (keys.ArrowLeft || keys.a) shark.tx -= kSpeed;
+  if (keys.ArrowRight || keys.d) shark.tx += kSpeed;
+  if (keys.ArrowUp || keys.w) shark.ty -= kSpeed;
+  if (keys.ArrowDown || keys.s) shark.ty += kSpeed;
+  shark.tx = Math.max(30, Math.min(W - 30, shark.tx));
+  shark.ty = Math.max(60, Math.min(H - 30, shark.ty));
+
+  // サメ移動(ターゲットに向かってなめらかに)
+  const dx = shark.tx - shark.x, dy = shark.ty - shark.y;
+  shark.x += dx * Math.min(1, dt * 5);
+  shark.y += dy * Math.min(1, dt * 5);
+  if (Math.abs(dx) > 6) shark.facing = dx > 0 ? 1 : -1;
+  shark.mouth = Math.max(0, shark.mouth - dt);
+  shark.invincible = Math.max(0, shark.invincible - dt);
+
+  // 自動しゃげき 🫧
+  shootTimer -= dt;
+  if (shootTimer <= 0) {
+    shootTimer = Math.max(0.22, 0.42 - level * 0.02);
+    bubbles.push({ x: shark.x + shark.facing * 34, y: shark.y - 6, vx: shark.facing * 460, vy: rand(-30, 30), r: 9 });
+    sfxShoot();
+  }
+  for (const b of bubbles) { b.x += b.vx * dt; b.y += b.vy * dt; }
+  bubbles = bubbles.filter(b => b.x > -30 && b.x < W + 30);
+
+  // 魚スポーン
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnTimer = Math.max(0.35, 1.1 - level * 0.08);
+    spawnFish(false);
+  }
+  hazardTimer -= dt;
+  if (hazardTimer <= 0) {
+    hazardTimer = Math.max(1.6, 4.5 - level * 0.3);
+    if (elapsed > 5) spawnFish(true);
+  }
+
+  // 魚移動
+  for (const f of fishes) {
+    f.wob += f.wobSpeed * dt;
+    f.x += f.vx * 60 * dt;
+    f.y += Math.sin(f.wob) * f.wobAmp;
+    f.flash = Math.max(0, f.flash - dt);
+  }
+  fishes = fishes.filter(f => f.x > -80 && f.x < W + 80);
+
+  // あわ × 魚
+  for (const b of bubbles) {
+    for (const f of fishes) {
+      if (f.dead) continue;
+      const rr = (f.r + b.r) * (f.r + b.r);
+      if (dist2(b.x, b.y, f.x, f.y) < rr) {
+        b.dead = true;
+        f.hp--;
+        f.flash = 0.15;
+        if (f.hp <= 0) {
+          f.dead = true;
+          addBurst(f.x, f.y, f.hazard ? "⭐" : "🫧", 7);
+          addScore(f.pts, f.x, f.y);
+          sfxPop();
+        } else {
+          sfxPop();
+        }
+        break;
+      }
+    }
+  }
+  bubbles = bubbles.filter(b => !b.dead);
+
+  // サメ × 魚
+  for (const f of fishes) {
+    if (f.dead) continue;
+    const rr = (f.r + shark.r) * (f.r + shark.r);
+    if (dist2(shark.x, shark.y, f.x, f.y) < rr) {
+      if (f.hazard) {
+        hurtShark();
+      } else {
+        f.dead = true;
+        shark.mouth = 0.25;
+        addBurst(f.x, f.y, "✨", 5);
+        addText(f.x, f.y - 30, "パクッ!", "#aef1ff");
+        addScore(f.pts * 2, f.x, f.y);
+        sfxChomp();
+      }
+    }
+  }
+  fishes = fishes.filter(f => !f.dead);
+
+  // エフェクト
+  for (const e of effects) {
+    e.t += dt;
+    if (e.kind === "p") { e.x += e.vx; e.y += e.vy; e.vy += 4 * dt; }
+  }
+  effects = effects.filter(e => e.t < 1);
+
+  // 背景の泡
+  if (ambient.length < 26 && Math.random() < 0.25) {
+    ambient.push({ x: rand(0, W), y: H + 20, r: rand(3, 10), v: rand(20, 55) });
+  }
+  for (const a of ambient) a.y -= a.v * dt;
+  ambient = ambient.filter(a => a.y > -20);
+}
+
+/* ================= 描画 ================= */
+function drawBg() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#0a72b8");
+  g.addColorStop(0.55, "#075a95");
+  g.addColorStop(1, "#043a63");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // 光のカーテン
+  ctx.save();
+  ctx.globalAlpha = 0.1;
+  ctx.fillStyle = "#bfeaff";
+  for (let i = 0; i < 4; i++) {
+    const bx = (i + 0.5) * (W / 4) + Math.sin(elapsed * 0.4 + i * 2) * 30;
+    ctx.beginPath();
+    ctx.moveTo(bx - 26, 0); ctx.lineTo(bx + 26, 0);
+    ctx.lineTo(bx + 90, H); ctx.lineTo(bx - 90, H);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+
+  // 背景の泡
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = "#dff4ff";
+  ctx.lineWidth = 1.5;
+  for (const a of ambient) {
+    ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+
+  // 海底
+  ctx.save();
+  ctx.font = "28px serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.globalAlpha = 0.9;
+  const deco = ["🌿", "🪸", "🌿", "🐚", "🪸", "🌿"];
+  for (let i = 0; i < deco.length; i++) {
+    const x = (i + 0.5) * (W / deco.length);
+    ctx.fillText(deco[i], x + Math.sin(elapsed + i) * 3, H + 4);
+  }
+  ctx.restore();
+}
+
+function drawEmoji(emoji, x, y, size, flip, alpha) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (flip) ctx.scale(-1, 1);
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+  ctx.font = size + "px serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(emoji, 0, 0);
+  ctx.restore();
+}
+
+function draw() {
+  drawBg();
+
+  // あわ(弾)
+  ctx.save();
+  for (const b of bubbles) {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "rgba(190, 235, 255, .5)";
+    ctx.strokeStyle = "#eaf9ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(b.x - 3, b.y - 3, 2.2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  // 魚
+  for (const f of fishes) {
+    const bob = Math.sin(f.wob) * 3;
+    const alpha = f.flash > 0 ? 0.5 : 1;
+    drawEmoji(f.emoji, f.x, f.y + bob, f.r * 2.3, f.flip, alpha);
+  }
+
+  // サメ(無敵中は点滅)
+  if (state === "play" || state === "over") {
+    const blink = shark.invincible > 0 && Math.floor(elapsed * 10) % 2 === 0;
+    if (!blink) {
+      const tilt = Math.sin(elapsed * 3) * 0.06;
+      ctx.save();
+      ctx.translate(shark.x, shark.y);
+      ctx.rotate(tilt);
+      // 🦈は左向き → 右へ進むとき反転
+      if (shark.facing === 1) ctx.scale(-1, 1);
+      ctx.font = (shark.r * 2.6 + (shark.mouth > 0 ? 6 : 0)) + "px serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("🦈", 0, 0);
+      ctx.restore();
+    }
+  }
+
+  // エフェクト
+  for (const e of effects) {
+    if (e.kind === "text") {
+      ctx.save();
+      ctx.globalAlpha = 1 - e.t;
+      ctx.font = "900 26px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(0,40,70,.7)";
+      ctx.lineWidth = 4;
+      const y = e.y - e.t * 50;
+      ctx.strokeText(e.text, e.x, y);
+      ctx.fillText(e.text, e.x, y);
+      ctx.restore();
+    } else {
+      drawEmoji(e.emoji, e.x, e.y, 18, false, 1 - e.t);
+    }
+  }
+}
+
+/* ================= メインループ ================= */
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (state === "play") update(dt);
+  else elapsed += dt;
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* スタート画面用に魚を泳がせておく */
+for (let i = 0; i < 8; i++) {
+  spawnFish(false);
+  fishes[i].x = rand(0, W);
+}
+</script>
+</body>
+</html>
